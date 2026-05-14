@@ -3,7 +3,7 @@ import { getBalanceTool, sendCeloTool, getCeloPriceTool } from "../tools/celo.js
 import { getAavePositionTool, saveCUSDTool, swapCeloToCUSDTool } from "../tools/defi.js"
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY!
-const MODEL = "gemma3:4b"
+const MODEL = "ministral-3:8b"
 const BASE_URL = "https://ollama.com"
 
 const tools = {

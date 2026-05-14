@@ -5,17 +5,17 @@ import { tool } from "@langchain/core/tools"
 import { z } from "zod"
 import "dotenv/config"
 
-const celoSepolia = defineChain({
-  id: 44787,
-  name: "Celo Sepolia Testnet",
+const celo = defineChain({
+  id: 42220,
+  name: "Celo Mainnet",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
   rpcUrls: { default: { http: [process.env.CELO_RPC!] } },
 })
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
 
-const publicClient = createPublicClient({ chain: celoSepolia, transport: http() })
-const walletClient = createWalletClient({ account, chain: celoSepolia, transport: http() })
+const publicClient = createPublicClient({ chain: celo, transport: http() })
+const walletClient = createWalletClient({ account, chain: celo, transport: http() })
 
 export const getBalanceTool = tool(
   async ({ address }) => {

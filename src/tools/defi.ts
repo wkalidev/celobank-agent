@@ -1,29 +1,27 @@
 import "dotenv/config"
-import { createPublicClient, createWalletClient, http, parseEther, formatEther, parseUnits, formatUnits } from "viem"
+import { createPublicClient, createWalletClient, http, parseEther, formatUnits, parseUnits } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { defineChain } from "viem"
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
 
-const celoSepolia = defineChain({
-  id: 44787,
-  name: "Celo Sepolia Testnet",
+const celo = defineChain({
+  id: 42220,
+  name: "Celo Mainnet",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
   rpcUrls: { default: { http: [process.env.CELO_RPC!] } },
 })
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
-const publicClient = createPublicClient({ chain: celoSepolia, transport: http() })
-const walletClient = createWalletClient({ account, chain: celoSepolia, transport: http() })
+const publicClient = createPublicClient({ chain: celo, transport: http() })
+const walletClient = createWalletClient({ account, chain: celo, transport: http() })
 
-// ABI minimal ERC20 pour approve + balance
 const ERC20_ABI = [
   { name: "approve", type: "function", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }], stateMutability: "nonpayable" },
   { name: "balanceOf", type: "function", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { name: "decimals", type: "function", inputs: [], outputs: [{ type: "uint8" }], stateMutability: "view" },
 ] as const
 
-// ABI minimal Aave Pool
 const AAVE_POOL_ABI = [
   { name: "supply", type: "function", inputs: [{ name: "asset", type: "address" }, { name: "amount", type: "uint256" }, { name: "onBehalfOf", type: "address" }, { name: "referralCode", type: "uint16" }], outputs: [], stateMutability: "nonpayable" },
   { name: "borrow", type: "function", inputs: [{ name: "asset", type: "address" }, { name: "amount", type: "uint256" }, { name: "interestRateMode", type: "uint256" }, { name: "referralCode", type: "uint16" }, { name: "onBehalfOf", type: "address" }], outputs: [], stateMutability: "nonpayable" },
@@ -33,8 +31,9 @@ const AAVE_POOL_ABI = [
 // Adresses Aave V3 sur Celo Mainnet
 const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6" as `0x${string}`
 const CUSD_ADDRESS = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as `0x${string}`
+const WCELO = "0x471EcE3750Da237f93B8E339c536989b8978a438" as `0x${string}`
+const UBESWAP_ROUTER = "0xE3D8bd6Aed4F159bc8000a9cD47CffDb95F96121" as `0x${string}`
 
-// TOOL 4 : Vérifier position Aave
 export const getAavePositionTool = tool(
   async ({ address }) => {
     try {
@@ -45,9 +44,9 @@ export const getAavePositionTool = tool(
         args: [address as `0x${string}`],
       })
       const [collateral, debt, available, , , healthFactor] = data
-      return `Position Aave:
+      return `Position Aave sur Celo Mainnet:
 - Collateral: $${formatUnits(collateral, 8)} USD
-- Dette: $${formatUnits(debt, 8)} USD  
+- Dette: $${formatUnits(debt, 8)} USD
 - Disponible à emprunter: $${formatUnits(available, 8)} USD
 - Health Factor: ${formatUnits(healthFactor, 18)}`
     } catch (e) {
@@ -56,16 +55,14 @@ export const getAavePositionTool = tool(
   },
   {
     name: "get_aave_position",
-    description: "Vérifie la position DeFi d'un utilisateur sur Aave (collateral, dette, health factor)",
+    description: "Vérifie la position DeFi d'un utilisateur sur Aave Celo Mainnet (collateral, dette, health factor)",
     schema: z.object({ address: z.string().describe("Adresse wallet 0x...") }),
   }
 )
 
-// TOOL 5 : Épargne automatique — dépôt cUSD sur Aave
 export const saveCUSDTool = tool(
   async ({ amount }) => {
     try {
-      // 1. Approve Aave pour dépenser les cUSD
       const approveHash = await walletClient.writeContract({
         address: CUSD_ADDRESS,
         abi: ERC20_ABI,
@@ -74,14 +71,13 @@ export const saveCUSDTool = tool(
       })
       console.log(`  ✅ Approve TX: ${approveHash}`)
 
-      // 2. Déposer sur Aave
       const supplyHash = await walletClient.writeContract({
         address: AAVE_POOL,
         abi: AAVE_POOL_ABI,
         functionName: "supply",
         args: [CUSD_ADDRESS, parseUnits(amount, 18), account.address, 0],
       })
-      return `✅ ${amount} cUSD déposés sur Aave avec succès !
+      return `✅ ${amount} cUSD déposés sur Aave Mainnet !
 TX: ${supplyHash}
 Vous gagnez maintenant des intérêts automatiquement. 💰`
     } catch (e) {
@@ -90,18 +86,13 @@ Vous gagnez maintenant des intérêts automatiquement. 💰`
   },
   {
     name: "save_cusd",
-    description: "Dépose des cUSD sur Aave pour générer des intérêts automatiquement",
+    description: "Dépose des cUSD sur Aave Celo Mainnet pour générer des intérêts automatiquement",
     schema: z.object({ amount: z.string().describe("Montant en cUSD à déposer ex: 10") }),
   }
 )
 
-// TOOL 6 : Swap CELO → cUSD via Ubeswap
 export const swapCeloToCUSDTool = tool(
   async ({ amount }) => {
-    // Ubeswap Router sur Celo
-    const UBESWAP_ROUTER = "0xE3D8bd6Aed4F159bc8000a9cD47CffDb95F96121" as `0x${string}`
-    const WCELO = "0x471EcE3750Da237f93B8E339c536989b8978a438" as `0x${string}`
-    
     const SWAP_ABI = [
       { name: "swapExactETHForTokens", type: "function", inputs: [{ name: "amountOutMin", type: "uint256" }, { name: "path", type: "address[]" }, { name: "to", type: "address" }, { name: "deadline", type: "uint256" }], outputs: [{ name: "amounts", type: "uint256[]" }], stateMutability: "payable" },
     ] as const
@@ -115,15 +106,15 @@ export const swapCeloToCUSDTool = tool(
         args: [0n, [WCELO, CUSD_ADDRESS], account.address, deadline],
         value: parseEther(amount),
       })
-      return `✅ Swap réussi ! ${amount} CELO → cUSD
-TX: ${hash}`
+      return `✅ Swap réussi ! ${amount} CELO → cUSD sur Mainnet
+TX: https://celoscan.io/tx/${hash}`
     } catch (e) {
       return `Erreur swap: ${e}`
     }
   },
   {
     name: "swap_celo_to_cusd",
-    description: "Échange des CELO contre des cUSD stablecoins via Ubeswap",
+    description: "Échange des CELO contre des cUSD stablecoins via Ubeswap sur Celo Mainnet",
     schema: z.object({ amount: z.string().describe("Montant CELO à échanger ex: 1") }),
   }
 )
