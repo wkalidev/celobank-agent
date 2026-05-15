@@ -1,21 +1,60 @@
 import "dotenv/config"
 import { getBalanceTool, sendCeloTool, getCeloPriceTool } from "../tools/celo.js"
-import { getAavePositionTool, saveCUSDTool, swapCeloToCUSDTool } from "../tools/defi.js"
+import {
+  getAavePositionTool,
+  saveCUSDTool,
+  swapCeloTool,
+  getPortfolioTool,
+  getMultiPriceTool,
+} from "../tools/defi.js"
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY!
-const MODEL = "ministral-3:8b"
-const BASE_URL = "https://ollama.com"
+const MODEL          = "ministral-3:8b"
+const BASE_URL       = "https://ollama.com"
 
+// ─── Tool registry ────────────────────────────────────────────────────────────
 const tools = {
-  get_celo_price: getCeloPriceTool,
-  get_balance: getBalanceTool,
-  send_celo: sendCeloTool,
+  get_balance:      getBalanceTool,
+  send_celo:        sendCeloTool,
+  get_celo_price:   getCeloPriceTool,
+  get_portfolio:    getPortfolioTool,
+  get_multi_price:  getMultiPriceTool,
+  swap_celo:        swapCeloTool,
   get_aave_position: getAavePositionTool,
-  save_cusd: saveCUSDTool,
-  swap_celo_to_cusd: swapCeloToCUSDTool,
+  save_cusd:        saveCUSDTool,
 }
 
+// ─── Tool schemas (OpenAI format) ─────────────────────────────────────────────
 const toolSchemas = [
+  {
+    type: "function",
+    function: {
+      name: "get_balance",
+      description: "Get native CELO balance of a wallet address",
+      parameters: {
+        type: "object",
+        properties: {
+          address: { type: "string", description: "Wallet address 0x..." },
+        },
+        required: ["address"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_celo",
+      description: "Send CELO to a wallet address",
+      parameters: {
+        type: "object",
+        properties: {
+          to:     { type: "string", description: "Recipient address 0x..." },
+          amount: { type: "string", description: "Amount in CELO, ex: 0.5" },
+        },
+        required: ["to", "amount"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -27,27 +66,51 @@ const toolSchemas = [
   {
     type: "function",
     function: {
-      name: "get_balance",
-      description: "Get CELO balance of a wallet address",
+      name: "get_portfolio",
+      description:
+        "Show full wallet portfolio: balances of CELO, cUSD, cEUR, cREAL, USDC, USDT for an address",
       parameters: {
         type: "object",
-        properties: { address: { type: "string", description: "Wallet address 0x..." } },
-        required: ["address"],
+        properties: {
+          address: {
+            type: "string",
+            description: "Wallet address 0x... (optional, uses default wallet if omitted)",
+          },
+        },
       },
     },
   },
   {
     type: "function",
     function: {
-      name: "send_celo",
-      description: "Send CELO to an address",
+      name: "get_multi_price",
+      description:
+        "Get real-time USD prices with 24h change for multiple tokens: CELO, cUSD, cEUR, cREAL, USDC, USDT",
       parameters: {
         type: "object",
         properties: {
-          to: { type: "string", description: "Recipient address" },
-          amount: { type: "string", description: "Amount in CELO" },
+          tokens: {
+            type: "string",
+            description:
+              "Comma-separated token symbols, ex: 'CELO,cUSD,USDC'. Omit to get all prices.",
+          },
         },
-        required: ["to", "amount"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "swap_celo",
+      description:
+        "Swap CELO for a stablecoin (cUSD, cEUR, cREAL) via Mento V2 on Celo Mainnet",
+      parameters: {
+        type: "object",
+        properties: {
+          amount:   { type: "string", description: "Amount of CELO to swap, ex: 1" },
+          tokenOut: { type: "string", description: "Output token: cUSD, cEUR or cREAL" },
+        },
+        required: ["amount", "tokenOut"],
       },
     },
   },
@@ -55,11 +118,16 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_aave_position",
-      description: "Check user DeFi position on Aave (collateral, debt, health factor)",
+      description:
+        "Check DeFi position on Aave Celo Mainnet: collateral, debt, available borrow, health factor",
       parameters: {
         type: "object",
-        properties: { address: { type: "string", description: "Wallet address 0x..." } },
-        required: ["address"],
+        properties: {
+          address: {
+            type: "string",
+            description: "Wallet address 0x... (optional)",
+          },
+        },
       },
     },
   },
@@ -70,31 +138,21 @@ const toolSchemas = [
       description: "Deposit cUSD on Aave to earn interest automatically",
       parameters: {
         type: "object",
-        properties: { amount: { type: "string", description: "Amount in cUSD ex: 10" } },
-        required: ["amount"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "swap_celo_to_cusd",
-      description: "Swap CELO to cUSD stablecoin via Ubeswap",
-      parameters: {
-        type: "object",
-        properties: { amount: { type: "string", description: "Amount in CELO ex: 1" } },
+        properties: {
+          amount: { type: "string", description: "Amount in cUSD, ex: 10" },
+        },
         required: ["amount"],
       },
     },
   },
 ]
 
+// ─── Ollama chat ──────────────────────────────────────────────────────────────
 async function ollamaChat(messages: any[]) {
-  console.log("OLLAMA KEY:", OLLAMA_API_KEY?.slice(0, 8))
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type":  "application/json",
       "Authorization": `Bearer ${OLLAMA_API_KEY}`,
     },
     body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, temperature: 0 }),
@@ -102,24 +160,37 @@ async function ollamaChat(messages: any[]) {
   return res.json()
 }
 
+// ─── Agent loop ───────────────────────────────────────────────────────────────
 export async function runAgent(input: string): Promise<string> {
   const messages: any[] = [
-    { role: "system", content: `Tu es CeloBank Agent — une banque autonome pour les non-bankés en Afrique, Asie et Amérique Latine.
-RÈGLE ABSOLUE DE LANGUE : Détecte la langue de chaque message et réponds TOUJOURS dans cette même langue.
-- Message en français → réponds en français
-- Message en anglais → réponds en anglais  
-- Message en italien → réponds en italien
-- Message en arabe → réponds en arabe
-- Message en espagnol → réponds en espagnol
-- Message en swahili → réponds en swahili
-Ne réponds JAMAIS dans une autre langue que celle de l'utilisateur.
-TOUJOURS appeler les tools disponibles pour répondre. Ne jamais inventer de résultats.` },
-  { role: "user", content: input },
-]
+    {
+      role: "system",
+      content: `You are CeloBank Agent — an autonomous bank for the unbanked in Africa, Asia and Latin America.
+
+You have access to these tools on Celo Mainnet:
+- get_balance       : native CELO balance of any address
+- send_celo         : send CELO to any address
+- get_celo_price    : current CELO price in USD
+- get_portfolio     : ALL token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT) at once
+- get_multi_price   : real-time prices + 24h change for all tokens
+- swap_celo         : swap CELO → cUSD / cEUR / cREAL via Mento V2
+- get_aave_position : DeFi position on Aave (collateral, debt, health factor)
+- save_cusd         : deposit cUSD on Aave to earn yield
+
+RULES:
+1. ALWAYS call the appropriate tool — never invent data or prices.
+2. Detect the user's language and ALWAYS respond in that same language (French→French, English→English, Arabic→Arabic, Spanish→Spanish, Swahili→Swahili, Italian→Italian).
+3. When the user asks about "my balance" or "my portfolio", use get_portfolio.
+4. When the user asks about prices of multiple tokens, use get_multi_price.
+5. When the user says "swap", "exchange", "convert" CELO, use swap_celo.
+6. Be warm, simple, and avoid technical jargon.`,
+    },
+    { role: "user", content: input },
+  ]
 
   for (let i = 0; i < 5; i++) {
     const data = await ollamaChat(messages)
-    const msg = data.choices?.[0]?.message
+    const msg  = data.choices?.[0]?.message
 
     if (!msg) {
       console.log("Raw response:", JSON.stringify(data))
@@ -130,13 +201,13 @@ TOUJOURS appeler les tools disponibles pour répondre. Ne jamais inventer de ré
       messages.push(msg)
       for (const call of msg.tool_calls) {
         const toolName = call.function.name as keyof typeof tools
-        const args = JSON.parse(call.function.arguments || "{}")
+        const args     = JSON.parse(call.function.arguments || "{}")
         console.log(`  🔧 Tool appelé: ${toolName}`, args)
         const result = await (tools[toolName] as any).invoke(args)
         messages.push({
-          role: "tool",
+          role:        "tool",
           tool_call_id: call.id,
-          content: String(result),
+          content:     String(result),
         })
       }
       continue
