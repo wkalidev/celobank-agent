@@ -123,14 +123,15 @@ export default function App() {
           <span style={{ fontSize: 12 }}>{priceTrend === "up" ? "↑" : priceTrend === "down" ? "↓" : ""}</span>
         </div>
 
-        {/* Stats */}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 28 }}>
+       {/* Stats + Connect */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 28 }}>
           {STATS.map((s, i) => (
             <div key={i} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 10, color: "#444", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: s.color, marginTop: 2 }}>{s.value}</div>
             </div>
           ))}
+          <ConnectButton />
         </div>
       </div>
 
