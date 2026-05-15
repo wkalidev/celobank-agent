@@ -31,8 +31,8 @@ const AAVE_POOL_ABI = [
 // Adresses Aave V3 sur Celo Mainnet
 const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6" as `0x${string}`
 const CUSD_ADDRESS = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as `0x${string}`
+const UNISWAP_ROUTER = "0x5615CDAb10dc425a742d643d949a7F474C01abc4" as `0x${string}`
 const WCELO = "0x471EcE3750Da237f93B8E339c536989b8978a438" as `0x${string}`
-const UBESWAP_ROUTER = "0xE3D8bd6Aed4F159bc8000a9cD47CffDb95F96121" as `0x${string}`
 
 export const getAavePositionTool = tool(
   async ({ address }) => {
@@ -94,27 +94,51 @@ Vous gagnez maintenant des intérêts automatiquement. 💰`
 export const swapCeloToCUSDTool = tool(
   async ({ amount }) => {
     const SWAP_ABI = [
-      { name: "swapExactETHForTokens", type: "function", inputs: [{ name: "amountOutMin", type: "uint256" }, { name: "path", type: "address[]" }, { name: "to", type: "address" }, { name: "deadline", type: "uint256" }], outputs: [{ name: "amounts", type: "uint256[]" }], stateMutability: "payable" },
+      { 
+        name: "exactInputSingle", 
+        type: "function", 
+        inputs: [{ 
+          name: "params", 
+          type: "tuple",
+          components: [
+            { name: "tokenIn", type: "address" },
+            { name: "tokenOut", type: "address" },
+            { name: "fee", type: "uint24" },
+            { name: "recipient", type: "address" },
+            { name: "amountIn", type: "uint256" },
+            { name: "amountOutMinimum", type: "uint256" },
+            { name: "sqrtPriceLimitX96", type: "uint160" },
+          ]
+        }], 
+        outputs: [{ name: "amountOut", type: "uint256" }], 
+        stateMutability: "payable" 
+      },
     ] as const
 
     try {
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20)
       const hash = await walletClient.writeContract({
-        address: UBESWAP_ROUTER,
+        address: UNISWAP_ROUTER,
         abi: SWAP_ABI,
-        functionName: "swapExactETHForTokens",
-        args: [0n, [WCELO, CUSD_ADDRESS], account.address, deadline],
+        functionName: "exactInputSingle",
+        args: [{
+          tokenIn: WCELO,
+          tokenOut: CUSD_ADDRESS,
+          fee: 3000,
+          recipient: account.address,
+          amountIn: parseEther(amount),
+          amountOutMinimum: 0n,
+          sqrtPriceLimitX96: 0n,
+        }] as const,
         value: parseEther(amount),
       })
-      return `✅ Swap réussi ! ${amount} CELO → cUSD sur Mainnet
-TX: https://celoscan.io/tx/${hash}`
+      return `✅ Swap réussi ! ${amount} CELO → cUSD sur Mainnet\nTX: https://celoscan.io/tx/${hash}`
     } catch (e) {
       return `Erreur swap: ${e}`
     }
   },
   {
     name: "swap_celo_to_cusd",
-    description: "Échange des CELO contre des cUSD stablecoins via Ubeswap sur Celo Mainnet",
+    description: "Échange des CELO contre des cUSD stablecoins via Uniswap V3 sur Celo Mainnet",
     schema: z.object({ amount: z.string().describe("Montant CELO à échanger ex: 1") }),
   }
 )
