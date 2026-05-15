@@ -32,16 +32,17 @@ const langInstructions: Record<string, string> = {
 }
 
 app.post("/chat", async (req, res) => {
-  const { message } = req.body
+  const { message, userAddress } = req.body
   if (!message) return res.status(400).json({ error: "Message requis" })
 
   try {
     const lang = detectLanguage(message)
     const langHint = langInstructions[lang]
     
-    // Injecte automatiquement l'adresse du wallet dans le contexte
-    const enrichedMessage = `${langHint} ${message}. User wallet address: ${AGENT_ADDRESS}.`
-    console.log(`👤 User [${lang}]: ${message}`)
+    // Utilise le wallet de l'utilisateur connecté si disponible
+    const walletAddress = userAddress || AGENT_ADDRESS
+    const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
+    console.log(`👤 User [${lang}] [${walletAddress}]: ${message}`)
     const response = await runAgent(enrichedMessage)
     console.log(`🤖 Agent: ${response}`)
     res.json({ response })

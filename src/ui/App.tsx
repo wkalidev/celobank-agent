@@ -75,7 +75,7 @@ export default function App() {
       const res = await fetch("https://celobank-agent-production.up.railway.app/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify({ message: msg, userAddress: address }),
       })
       const data = await res.json()
       setMessages(prev => [...prev, {
