@@ -12,6 +12,8 @@
     "agent": "tsx src/index.ts",
     "server": "tsx src/server.ts",
     "ui": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "dev": "concurrently \"tsx src/server.ts\" \"vite\""
   },
   "keywords": [],
