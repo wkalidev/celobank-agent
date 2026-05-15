@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react"
+import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { useAccount } from 'wagmi'
 
 interface Message {
   role: "user" | "agent"
@@ -35,6 +37,8 @@ export default function App() {
   const [celoPrice, setCeloPrice] = useState<string | null>(null)
   const [priceTrend, setPriceTrend] = useState<"up" | "down" | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  
+  const { address, isConnected } = useAccount()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })

@@ -1,5 +1,5 @@
 {
   "buildCommand": "npm install && npm run build",
-  "outputDirectory": "dist",
+  "outputDirectory": "src/ui/dist",
   "framework": null
 }

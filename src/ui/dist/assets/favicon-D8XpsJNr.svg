@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FCFF52"/>
+      <stop offset="100%" style="stop-color:#35D07F"/>
+    </linearGradient>
+  </defs>
+  <!-- Cercle fond -->
+  <circle cx="100" cy="100" r="100" fill="url(#g1)"/>
+  <!-- Lettre C stylisée -->
+  <path d="M130 65 A50 50 0 1 0 130 135 L115 120 A32 32 0 1 1 115 80 Z" fill="#000" />
+  <!-- Point Celo -->
+  <circle cx="100" cy="155" r="8" fill="#000"/>
+</svg>
