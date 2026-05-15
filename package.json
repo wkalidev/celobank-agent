@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "npx tsx src/server.ts",
     "agent": "tsx src/index.ts",
@@ -44,7 +47,6 @@
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.1.2",
-    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "^3.4.5",
     "typescript": "~5.8.0",
     "vite": "^8.0.12"
