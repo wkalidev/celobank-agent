@@ -166,41 +166,60 @@ export const saveCUSDTool = tool(
   }
 )
 
-// ─── Tool 3 : Swap CELO → cUSD via Mento ─────────────────────────────────────
 export const swapCeloToCUSDTool = tool(
   async ({ amount }) => {
+    // Mento V2 — Broker officiel Celo Mainnet
+    const BROKER         = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
+    const BI_POOL_MANAGER = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
+    // Exchange ID CELO/cUSD (fixe sur Mainnet)
+    const EXCHANGE_ID    = "0x3135b662c38265d0655177091f1b647b4fef511103d06c016efdf18b46930d2c" as `0x${string}`
+
+    const BROKER_ABI = [{
+      name: "swapIn",
+      type: "function",
+      inputs: [
+        { name: "exchangeProvider", type: "address" },
+        { name: "exchangeId",       type: "bytes32"  },
+        { name: "tokenIn",          type: "address"  },
+        { name: "tokenOut",         type: "address"  },
+        { name: "amountIn",         type: "uint256"  },
+        { name: "amountOutMin",     type: "uint256"  },
+      ],
+      outputs: [{ name: "amountOut", type: "uint256" }],
+      stateMutability: "nonpayable",
+    }] as const
+
     try {
       const parsed = parseEther(amount)
 
-      // 1. Approve Mento pour dépenser les CELO (GoldToken ERC20)
+      // 1. Approve Broker pour dépenser les CELO
       const approveHash = await walletClient.writeContract({
         address: CELO_TOKEN,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [MENTO_EXCHANGE, parsed],
+        args: [BROKER, parsed],
       })
-      console.log(`  ✅ Approve CELO TX : ${approveHash}`)
+      console.log(`  ✅ Approve TX : ${approveHash}`)
 
-      // 2. Swap CELO → cUSD
+      // 2. Swap CELO → cUSD via Mento V2 Broker
       const hash = await walletClient.writeContract({
-        address: MENTO_EXCHANGE,
-        abi: MENTO_ABI,
-        functionName: "sell",
-        args: [parsed, 0n, true],
+        address: BROKER,
+        abi: BROKER_ABI,
+        functionName: "swapIn",
+        args: [BI_POOL_MANAGER, EXCHANGE_ID, CELO_TOKEN, CUSD_ADDRESS, parsed, 0n],
       })
 
       return [
-        `✅ Swap réussi ! ${amount} CELO → cUSD`,
+        `✅ Swap réussi ! ${amount} CELO → cUSD via Mento V2`,
         `TX : https://celoscan.io/tx/${hash}`,
       ].join("\n")
     } catch (e) {
-      return `Erreur swap Mento : ${e}`
+      return `Erreur swap Mento V2 : ${e}`
     }
   },
   {
     name: "swap_celo_to_cusd",
-    description:
-      "Échange des CELO contre des cUSD stablecoins via Mento (protocole natif Celo Mainnet)",
+    description: "Échange des CELO contre des cUSD via Mento V2 Broker (protocole officiel Celo Mainnet)",
     schema: z.object({
       amount: z.string().describe("Montant CELO à échanger, ex : 1"),
     }),
