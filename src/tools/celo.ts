@@ -46,8 +46,10 @@ const BI_POOL_MANAGER = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${str
 // Vrais Exchange IDs Mento V2 Mainnet
 const EXCHANGE_IDS: Record<string, `0x${string}`> = {
   "CELO-cUSD":  "0x3135b662c38265d0655177091f1b647b4fef511103d06c016efdf18b46930d2c",
-  "CELO-cEUR":  "0xb73ffc6b5123de3c8e460490543ab93a3be7d70824f1a343847aa5d49b6f53a8",
-  "CELO-cREAL": "0xed0528e42b9ecae538e6d7438b2a05ee21cd4d12c2d266e71e0e0cd0ae0bcf6",
+  "CELO-cEUR":  "0x746455363e8f55d04e0a2cc040d1b348a6c031b336ba6af6ae91515c194929c8",
+  "CELO-cREAL": "0xd11d52b973ddbb983cc2087aabcafd915fc3140cf9996aacc61db9710d1bde05",
+  "CELO-USDC":  "0xacc988382b66ee5456086643dcfd9a5ca43dd8f428f6ef22503d8b8013bcffd7",
+  "CELO-USDT":  "0x773bcec109cee923b5e04706044fd9d6a5121b1a6a4c059c36fdbe5b845d4e9b",
 }
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
@@ -204,7 +206,7 @@ export const swapCeloTool = tool(
     try {
       const symbol = tokenOut.toUpperCase()
       const token = TOKENS[symbol]
-      if (!token) return `Token ${symbol} non supporté. Disponibles : cUSD, cEUR, cREAL`
+      if (!token) return `Token ${symbol} non supporté. Disponibles : cUSD, cEUR, cREAL, USDC, USDT`
 
       const exchangeKey = `CELO-${symbol}`
       const exchangeId = EXCHANGE_IDS[exchangeKey]
