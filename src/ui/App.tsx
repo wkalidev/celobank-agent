@@ -9,19 +9,12 @@ interface Message {
 }
 
 const QUICK_ACTIONS = [
-  { label: "💰 Prix CELO", msg: "Quel est le prix du CELO en ce moment ?" },
-  { label: "📊 Mon solde", msg: "Vérifie mon solde" },
-  { label: "🔄 Swap CELO→cUSD", msg: "Échange 0.1 CELO contre des cUSD" },
-  { label: "🏦 Position Aave", msg: "Quelle est ma position sur Aave ?" },
-  { label: "📤 Envoyer", msg: "Je veux envoyer des CELO" },
-  { label: "💵 Épargner", msg: "Je veux déposer des cUSD sur Aave" },
-]
-
-const STATS = [
-  { label: "Réseau", value: "Celo Mainnet", color: "#FCFF52" },
-  { label: "Gas fees", value: "< $0.001", color: "#35D07F" },
-  { label: "Standard", value: "ERC-8004", color: "#fff" },
-  { label: "Stablecoins", value: "25+", color: "#35D07F" },
+  { label: "⬡ PRIX CELO", msg: "Quel est le prix du CELO en ce moment ?", color: "#00ff9f" },
+  { label: "◈ SOLDE", msg: "Vérifie mon solde", color: "#00d4ff" },
+  { label: "⟁ SWAP→cUSD", msg: "Échange 0.1 CELO contre des cUSD", color: "#ff006e" },
+  { label: "◎ AAVE", msg: "Quelle est ma position sur Aave ?", color: "#ffbe0b" },
+  { label: "⇾ ENVOYER", msg: "Je veux envoyer des CELO", color: "#8338ec" },
+  { label: "◉ ÉPARGNER", msg: "Je veux déposer des cUSD sur Aave", color: "#00ff9f" },
 ]
 
 const LANGUAGES = [
@@ -35,11 +28,96 @@ const LANGUAGES = [
   { flag: "🇨🇳", code: "zh", label: "中文" },
 ]
 
+const GLITCH_CHARS = "!<>-_\\/[]{}—=+*^?#@$%&"
+
+function GlitchText({ text, className = "" }: { text: string; className?: string }) {
+  const [display, setDisplay] = useState(text)
+  const [glitching, setGlitching] = useState(false)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (Math.random() > 0.97) {
+        setGlitching(true)
+        let iter = 0
+        const glitch = setInterval(() => {
+          setDisplay(text.split("").map((c, i) =>
+            i < iter ? text[i] : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]
+          ).join(""))
+          iter += 1
+          if (iter > text.length) {
+            clearInterval(glitch)
+            setDisplay(text)
+            setGlitching(false)
+          }
+        }, 40)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [text])
+
+  return <span className={className} style={{ fontFamily: "'Courier New', monospace" }}>{display}</span>
+}
+
+function ScanLine() {
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      pointerEvents: "none", zIndex: 9999,
+      background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,159,0.015) 2px, rgba(0,255,159,0.015) 4px)",
+    }} />
+  )
+}
+
+function CRTNoise() {
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      pointerEvents: "none", zIndex: 9998,
+      background: "radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%)",
+    }} />
+  )
+}
+
+function HexGrid() {
+  return (
+    <svg style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", opacity: 0.04, pointerEvents: "none", zIndex: 0 }}
+      xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="hex" x="0" y="0" width="60" height="52" patternUnits="userSpaceOnUse">
+          <polygon points="30,2 58,17 58,35 30,50 2,35 2,17"
+            fill="none" stroke="#00ff9f" strokeWidth="0.5" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#hex)" />
+    </svg>
+  )
+}
+
+function DataStream() {
+  const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノ"
+  const cols = 20
+  return (
+    <div style={{ position: "fixed", top: 0, right: 0, width: 180, height: "100%", overflow: "hidden", opacity: 0.06, pointerEvents: "none", zIndex: 0 }}>
+      {Array.from({ length: cols }).map((_, i) => (
+        <div key={i} style={{
+          position: "absolute", top: 0, left: i * 9,
+          fontSize: 10, color: "#00ff9f", fontFamily: "monospace",
+          animation: `datafall ${2 + Math.random() * 4}s ${Math.random() * 2}s linear infinite`,
+          whiteSpace: "nowrap",
+          writingMode: "vertical-rl",
+        }}>
+          {Array.from({ length: 40 }).map(() => chars[Math.floor(Math.random() * chars.length)]).join("")}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "agent",
-      content: "👋 Bonjour ! Je suis **CeloBank Agent** — la première banque IA autonome sur Celo.\n\nAccès à la finance pour les 1.4 milliard de non-bankés dans le monde.\n\nChoisissez une action rapide ou écrivez votre demande. Je parle toutes les langues 🌍",
+      content: `> CELOBANK_AGENT_v2.0 INITIALIZED\n> CONNECTING TO CELO MAINNET...\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nACCÈS À LA FINANCE DÉCENTRALISÉE POUR 1.4B DE NON-BANKÉS.\n\nSÉLECTIONNEZ UNE ACTION OU ENTREZ UNE COMMANDE.\nJE PARLE TOUTES LES LANGUES. 🌍`,
       timestamp: new Date(),
     },
   ])
@@ -48,13 +126,22 @@ export default function App() {
   const [celoPrice, setCeloPrice] = useState<string | null>(null)
   const [priceTrend, setPriceTrend] = useState<"up" | "down" | null>(null)
   const [selectedLang, setSelectedLang] = useState<string | null>(null)
+  const [blockNum, setBlockNum] = useState(Math.floor(Math.random() * 999999) + 25000000)
+  const [pingMs, setPingMs] = useState(Math.floor(Math.random() * 20) + 5)
   const bottomRef = useRef<HTMLDivElement>(null)
-  
   const { address } = useAccount()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBlockNum(b => b + 1)
+      setPingMs(Math.floor(Math.random() * 20) + 5)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     async function fetchPrice() {
@@ -66,7 +153,7 @@ export default function App() {
         setPriceTrend(change >= 0 ? "up" : "down")
         setCeloPrice(price)
       } catch {
-        setCeloPrice("--")
+        setCeloPrice("ERR")
       }
     }
     fetchPrice()
@@ -84,9 +171,7 @@ export default function App() {
     setLoading(true)
 
     const langLabel = LANGUAGES.find(l => l.code === selectedLang)?.label
-    const enrichedMsg = selectedLang
-      ? `[Respond only in ${langLabel}] ${msg}`
-      : msg
+    const enrichedMsg = selectedLang ? `[Respond only in ${langLabel}] ${msg}` : msg
 
     try {
       const res = await fetch("https://celobank-agent-production.up.railway.app/chat", {
@@ -103,7 +188,7 @@ export default function App() {
     } catch {
       setMessages(prev => [...prev, {
         role: "agent",
-        content: "❌ Erreur de connexion au serveur.",
+        content: "ERR_CONNECTION_FAILED: Impossible de joindre le serveur.",
         timestamp: new Date(),
       }])
     } finally {
@@ -112,131 +197,248 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#050505", color: "#fff", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
+    <div style={{
+      display: "flex", flexDirection: "column", height: "100vh",
+      background: "#020408", color: "#00ff9f",
+      fontFamily: "'Courier New', 'Lucida Console', monospace",
+      overflow: "hidden", position: "relative",
+    }}>
+      <ScanLine />
+      <CRTNoise />
+      <HexGrid />
+      <DataStream />
 
       {/* ── HEADER ── */}
-      <div style={{ padding: "0 24px", height: 60, borderBottom: "1px solid #111", display: "flex", alignItems: "center", gap: 14, background: "rgba(10,10,10,0.95)", backdropFilter: "blur(20px)", flexShrink: 0, zIndex: 10 }}>
+      <div style={{
+        padding: "0 20px", height: 56, flexShrink: 0, zIndex: 10,
+        display: "flex", alignItems: "center", gap: 16,
+        background: "rgba(2,4,8,0.95)",
+        borderBottom: "1px solid rgba(0,255,159,0.3)",
+        boxShadow: "0 0 30px rgba(0,255,159,0.1), inset 0 -1px 0 rgba(0,255,159,0.2)",
+      }}>
+        {/* Logo */}
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <img src="/logo.svg" alt="CeloBank" style={{ width: 36, height: 36, borderRadius: "50%" }} />
-          <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#35D07F", border: "2px solid #050505" }} />
+          <div style={{
+            width: 38, height: 38, borderRadius: "50%", overflow: "hidden",
+            border: "2px solid #00ff9f",
+            boxShadow: "0 0 15px rgba(0,255,159,0.6), inset 0 0 10px rgba(0,255,159,0.1)",
+          }}>
+            <img src="/logo.svg" alt="CeloBank" style={{ width: "100%", height: "100%", filter: "hue-rotate(90deg) brightness(1.2)" }} />
+          </div>
+          <div style={{
+            position: "absolute", bottom: 0, right: 0, width: 10, height: 10,
+            borderRadius: "50%", background: "#00ff9f",
+            boxShadow: "0 0 8px #00ff9f", animation: "pulse 2s infinite",
+          }} />
         </div>
+
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.3px" }}>CeloBank Agent</div>
-          <div style={{ fontSize: 11, color: "#35D07F", display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#35D07F", animation: "pulse 2s infinite" }} />
-            En ligne · Celo Mainnet
+          <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "0.15em", color: "#00ff9f", textShadow: "0 0 10px rgba(0,255,159,0.8)" }}>
+            <GlitchText text="CELOBANK_AGENT" />
+          </div>
+          <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.5, letterSpacing: "0.1em" }}>
+            BLOCK #{blockNum.toLocaleString()} · {pingMs}ms · MAINNET
           </div>
         </div>
-        <div style={{ marginLeft: 16, padding: "6px 14px", borderRadius: 20, background: "#0d1f14", border: "1px solid #1a3d24", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: "#555" }}>CELO</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: priceTrend === "up" ? "#35D07F" : priceTrend === "down" ? "#ff4d4d" : "#fff" }}>
+
+        {/* Price ticker */}
+        <div style={{
+          marginLeft: 12, padding: "5px 12px", borderRadius: 2,
+          background: "rgba(0,255,159,0.05)",
+          border: "1px solid rgba(0,255,159,0.3)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.5, letterSpacing: "0.1em" }}>CELO/USD</span>
+          <span style={{
+            fontSize: 13, fontWeight: 700,
+            color: priceTrend === "up" ? "#00ff9f" : priceTrend === "down" ? "#ff006e" : "#00d4ff",
+            textShadow: `0 0 8px ${priceTrend === "up" ? "#00ff9f" : priceTrend === "down" ? "#ff006e" : "#00d4ff"}`,
+          }}>
             {celoPrice ? `$${celoPrice}` : "..."}
           </span>
-          <span style={{ fontSize: 12 }}>{priceTrend === "up" ? "↑" : priceTrend === "down" ? "↓" : ""}</span>
+          <span style={{ fontSize: 10, color: priceTrend === "up" ? "#00ff9f" : "#ff006e" }}>
+            {priceTrend === "up" ? "▲" : priceTrend === "down" ? "▼" : ""}
+          </span>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 28 }}>
-          {STATS.map((s, i) => (
-            <div key={i} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "#444", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: s.color, marginTop: 2 }}>{s.value}</div>
+
+        {/* Status pills */}
+        <div style={{ display: "flex", gap: 8, marginLeft: 8 }}>
+          {[
+            { label: "GAS", val: "<$0.001", color: "#00ff9f" },
+            { label: "ERC", val: "8004", color: "#00d4ff" },
+            { label: "NET", val: "CELO", color: "#ffbe0b" },
+          ].map((s, i) => (
+            <div key={i} style={{
+              padding: "3px 8px", borderRadius: 2, fontSize: 9, letterSpacing: "0.1em",
+              background: `${s.color}10`, border: `1px solid ${s.color}40`,
+              color: s.color, textShadow: `0 0 6px ${s.color}`,
+            }}>
+              {s.label}:{s.val}
             </div>
           ))}
+        </div>
+
+        <div style={{ marginLeft: "auto" }}>
           <ConnectButton />
         </div>
       </div>
 
       {/* ── BODY ── */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
 
         {/* ── LEFT SIDEBAR ── */}
-        <div style={{ width: 240, borderRight: "1px solid #111", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, overflowY: "auto" }}>
-          <div style={{ fontSize: 10, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Actions rapides</div>
+        <div style={{
+          width: 220, borderRight: "1px solid rgba(0,255,159,0.15)",
+          padding: "16px 12px", display: "flex", flexDirection: "column", gap: 6,
+          flexShrink: 0, overflowY: "auto", background: "rgba(0,255,159,0.02)",
+        }}>
+          <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.4, letterSpacing: "0.15em", marginBottom: 6, borderBottom: "1px solid rgba(0,255,159,0.1)", paddingBottom: 6 }}>
+            // QUICK_ACTIONS
+          </div>
+
           {QUICK_ACTIONS.map((action, i) => (
-            <button key={i} onClick={() => sendMessage(action.msg)} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #1a1a1a", background: "#0d0d0d", color: "#ccc", fontSize: 13, cursor: "pointer", textAlign: "left", transition: "all 0.15s", fontFamily: "inherit" }}
-              onMouseEnter={e => { (e.target as HTMLElement).style.background = "#1a1a1a"; (e.target as HTMLElement).style.color = "#fff"; (e.target as HTMLElement).style.borderColor = "#35D07F" }}
-              onMouseLeave={e => { (e.target as HTMLElement).style.background = "#0d0d0d"; (e.target as HTMLElement).style.color = "#ccc"; (e.target as HTMLElement).style.borderColor = "#1a1a1a" }}>
+            <button key={i} onClick={() => sendMessage(action.msg)} style={{
+              padding: "9px 12px", borderRadius: 2, cursor: "pointer",
+              textAlign: "left", fontFamily: "inherit", fontSize: 11,
+              letterSpacing: "0.05em", transition: "all 0.15s",
+              background: `${action.color}08`,
+              border: `1px solid ${action.color}30`,
+              color: action.color,
+              textShadow: `0 0 8px ${action.color}60`,
+            }}
+              onMouseEnter={e => {
+                const el = e.currentTarget
+                el.style.background = `${action.color}18`
+                el.style.borderColor = `${action.color}80`
+                el.style.boxShadow = `0 0 12px ${action.color}30, inset 0 0 12px ${action.color}08`
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget
+                el.style.background = `${action.color}08`
+                el.style.borderColor = `${action.color}30`
+                el.style.boxShadow = "none"
+              }}>
               {action.label}
             </button>
           ))}
 
-          {/* ── LANGUE SELECTOR ── */}
-          <div style={{ marginTop: 16, fontSize: 10, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Langue</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ marginTop: 12, fontSize: 9, color: "#00ff9f", opacity: 0.4, letterSpacing: "0.15em", borderBottom: "1px solid rgba(0,255,159,0.1)", paddingBottom: 6 }}>
+            // LANGUAGE_SELECT
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {LANGUAGES.map((lang) => (
-              <div
-                key={lang.code}
-                onClick={() => setSelectedLang(selectedLang === lang.code ? null : lang.code)}
-                title={lang.label}
-                style={{
-                  fontSize: 20,
-                  cursor: "pointer",
-                  opacity: selectedLang === null || selectedLang === lang.code ? 1 : 0.3,
-                  transform: selectedLang === lang.code ? "scale(1.2)" : "scale(1)",
-                  transition: "all 0.2s",
-                  border: selectedLang === lang.code ? "2px solid #35D07F" : "2px solid transparent",
-                  borderRadius: 6,
-                  padding: 2,
-                }}
-              >
+              <div key={lang.code} onClick={() => setSelectedLang(selectedLang === lang.code ? null : lang.code)}
+                title={lang.label} style={{
+                  fontSize: 18, cursor: "pointer", transition: "all 0.2s",
+                  opacity: selectedLang === null || selectedLang === lang.code ? 1 : 0.2,
+                  filter: selectedLang === lang.code ? "drop-shadow(0 0 6px #00ff9f)" : "none",
+                  transform: selectedLang === lang.code ? "scale(1.15)" : "scale(1)",
+                  border: selectedLang === lang.code ? "1px solid #00ff9f40" : "1px solid transparent",
+                  borderRadius: 3, padding: 2,
+                }}>
                 {lang.flag}
               </div>
             ))}
           </div>
           {selectedLang && (
-            <div style={{ fontSize: 11, color: "#35D07F", marginTop: 2 }}>
-              ✓ {LANGUAGES.find(l => l.code === selectedLang)?.label}
+            <div style={{ fontSize: 9, color: "#00ff9f", letterSpacing: "0.1em", opacity: 0.7 }}>
+              ▶ {LANGUAGES.find(l => l.code === selectedLang)?.label.toUpperCase()}
             </div>
           )}
 
-          <div style={{ marginTop: "auto", padding: "12px", borderRadius: 10, background: "#0d1f14", border: "1px solid #1a3d24" }}>
-            <div style={{ fontSize: 10, color: "#35D07F", fontWeight: 600, marginBottom: 4 }}>🔗 ERC-8004</div>
-            <div style={{ fontSize: 11, color: "#555", lineHeight: 1.5 }}>Agent avec identité on-chain vérifiable sur Celo</div>
+          <div style={{ marginTop: "auto", padding: "10px", borderRadius: 2, background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.15)" }}>
+            <div style={{ fontSize: 9, color: "#00ff9f", letterSpacing: "0.1em", marginBottom: 4, opacity: 0.7 }}>⬡ ERC-8004 IDENTITY</div>
+            <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.35, lineHeight: 1.8, letterSpacing: "0.05em" }}>
+              AGENT REGISTERED<br />ON-CHAIN VERIFIABLE<br />CELO MAINNET
+            </div>
           </div>
         </div>
 
         {/* ── CHAT ── */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* Terminal header bar */}
+          <div style={{
+            padding: "6px 20px", borderBottom: "1px solid rgba(0,255,159,0.1)",
+            background: "rgba(0,255,159,0.02)", display: "flex", alignItems: "center", gap: 8,
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.4, letterSpacing: "0.1em" }}>
+              TERMINAL://celobank/chat — {messages.length} MSGS
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 9, color: "#00ff9f", opacity: 0.3 }}>
+              {address ? `WALLET: ${address.slice(0, 6)}...${address.slice(-4)}` : "WALLET: NOT_CONNECTED"}
+            </span>
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
             {messages.map((msg, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 10 }}>
+              <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 10 }}>
+
                 {msg.role === "agent" && (
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, overflow: "hidden" }}>
-                    <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%" }} />
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 2, flexShrink: 0,
+                    border: "1px solid #00ff9f40", overflow: "hidden",
+                    boxShadow: "0 0 10px rgba(0,255,159,0.3)",
+                  }}>
+                    <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%", filter: "hue-rotate(90deg)" }} />
                   </div>
                 )}
-                <div style={{ maxWidth: "65%" }}>
+
+                <div style={{ maxWidth: "70%" }}>
+                  <div style={{ fontSize: 8, letterSpacing: "0.1em", marginBottom: 4, opacity: 0.4, color: msg.role === "user" ? "#00d4ff" : "#00ff9f" }}>
+                    {msg.role === "agent" ? "CELOBANK_AI" : `USER_${address ? address.slice(-4).toUpperCase() : "ANON"}`} · {msg.timestamp.toLocaleTimeString()}
+                  </div>
                   <div style={{
-                    padding: "14px 18px",
-                    borderRadius: msg.role === "user" ? "20px 20px 4px 20px" : "20px 20px 20px 4px",
-                    background: msg.role === "user" ? "linear-gradient(135deg, #35D07F, #1a9e5c)" : "linear-gradient(135deg, #111, #0d0d0d)",
-                    border: msg.role === "agent" ? "1px solid #1e1e1e" : "none",
-                    fontSize: 14,
-                    lineHeight: 1.7,
+                    padding: "12px 16px", borderRadius: 2,
+                    background: msg.role === "user"
+                      ? "rgba(0,212,255,0.06)"
+                      : "rgba(0,255,159,0.04)",
+                    border: msg.role === "user"
+                      ? "1px solid rgba(0,212,255,0.3)"
+                      : "1px solid rgba(0,255,159,0.2)",
+                    boxShadow: msg.role === "user"
+                      ? "0 0 15px rgba(0,212,255,0.1)"
+                      : "0 0 15px rgba(0,255,159,0.08)",
+                    fontSize: 13, lineHeight: 1.8,
+                    color: msg.role === "user" ? "#00d4ff" : "#00ff9f",
                     whiteSpace: "pre-wrap",
-                    boxShadow: msg.role === "user" ? "0 4px 20px rgba(53,208,127,0.2)" : "0 4px 20px rgba(0,0,0,0.3)",
+                    fontFamily: "'Courier New', monospace",
+                    textShadow: msg.role === "user" ? "0 0 6px rgba(0,212,255,0.3)" : "0 0 6px rgba(0,255,159,0.2)",
                   }}>
+                    {msg.role === "agent" && <span style={{ opacity: 0.4 }}>{">"} </span>}
                     {msg.content.replace(/\*\*(.*?)\*\*/g, "$1")}
                   </div>
-                  <div style={{ fontSize: 10, color: "#333", marginTop: 4, textAlign: msg.role === "user" ? "right" : "left", paddingLeft: msg.role === "agent" ? 4 : 0 }}>
-                    {msg.timestamp.toLocaleTimeString()}
-                  </div>
                 </div>
+
                 {msg.role === "user" && (
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #FCFF52, #35D07F)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#000" }}>U</div>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 2, flexShrink: 0,
+                    background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.4)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 700, color: "#00d4ff",
+                    boxShadow: "0 0 10px rgba(0,212,255,0.3)",
+                  }}>USR</div>
                 )}
               </div>
             ))}
+
             {loading && (
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
-                  <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%" }} />
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 2, overflow: "hidden",
+                  border: "1px solid #00ff9f40", boxShadow: "0 0 10px rgba(0,255,159,0.3)",
+                }}>
+                  <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%", filter: "hue-rotate(90deg)" }} />
                 </div>
-                <div style={{ padding: "14px 18px", borderRadius: "20px 20px 20px 4px", background: "#111", border: "1px solid #1e1e1e" }}>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    {[0, 1, 2].map(j => (
-                      <div key={j} style={{ width: 6, height: 6, borderRadius: "50%", background: "#35D07F", animation: `bounce 1.2s ${j * 0.2}s infinite` }} />
-                    ))}
-                  </div>
+                <div style={{
+                  padding: "12px 16px", borderRadius: 2,
+                  background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.2)",
+                  fontSize: 12, color: "#00ff9f", letterSpacing: "0.1em",
+                }}>
+                  <span style={{ animation: "blink 1s infinite" }}>PROCESSING</span>
+                  <span style={{ opacity: 0.4 }}> ■■■■■■■■</span>
                 </div>
               </div>
             )}
@@ -244,81 +446,108 @@ export default function App() {
           </div>
 
           {/* Input */}
-          <div style={{ padding: "16px 28px", borderTop: "1px solid #111", background: "rgba(10,10,10,0.95)", backdropFilter: "blur(20px)" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", background: "#0d0d0d", border: "1px solid #1e1e1e", borderRadius: 16, padding: "8px 8px 8px 18px" }}>
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
+          <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(0,255,159,0.15)", background: "rgba(0,0,0,0.5)", flexShrink: 0 }}>
+            <div style={{
+              display: "flex", gap: 8, alignItems: "center",
+              background: "rgba(0,255,159,0.03)",
+              border: "1px solid rgba(0,255,159,0.3)",
+              borderRadius: 2, padding: "8px 12px",
+              boxShadow: "0 0 20px rgba(0,255,159,0.08), inset 0 0 20px rgba(0,255,159,0.02)",
+            }}>
+              <span style={{ fontSize: 12, color: "#00ff9f", opacity: 0.5 }}>{">"}_</span>
+              <input value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                placeholder="Écris en n'importe quelle langue · Envoie 1 CELO à 0x... · Quel est le prix ?"
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#fff", fontSize: 14, fontFamily: "inherit" }}
-              />
-              <button
-                onClick={() => sendMessage()}
-                disabled={loading || !input.trim()}
+                placeholder="ENTER COMMAND // TOUTES LANGUES SUPPORTÉES //"
                 style={{
-                  padding: "10px 20px",
-                  borderRadius: 12,
-                  border: "none",
-                  background: loading || !input.trim() ? "#1a1a1a" : "linear-gradient(135deg, #FCFF52, #35D07F)",
-                  color: loading || !input.trim() ? "#444" : "#000",
-                  fontWeight: 700,
-                  cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-                  fontSize: 14,
-                  fontFamily: "inherit",
-                  transition: "all 0.2s",
-                  whiteSpace: "nowrap",
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: "#00ff9f", fontSize: 13, fontFamily: "inherit",
+                  caretColor: "#00ff9f", letterSpacing: "0.02em",
                 }}
-              >
-                {loading ? "⏳" : "Envoyer ↗"}
+              />
+              
+              <button onClick={() => sendMessage()} disabled={loading || !input.trim()} style={{
+  padding: "8px 16px", borderRadius: 2, cursor: loading || !input.trim() ? "not-allowed" : "pointer",
+  background: loading || !input.trim() ? "rgba(0,255,159,0.05)" : "rgba(0,255,159,0.15)",
+  color: loading || !input.trim() ? "rgba(0,255,159,0.2)" : "#00ff9f",
+  fontFamily: "inherit", fontSize: 11, letterSpacing: "0.1em", fontWeight: 700,
+  border: `1px solid ${loading || !input.trim() ? "rgba(0,255,159,0.1)" : "rgba(0,255,159,0.5)"}`,
+  boxShadow: loading || !input.trim() ? "none" : "0 0 12px rgba(0,255,159,0.2)",
+  transition: "all 0.2s",
+}}>
+                {loading ? "WAIT..." : "EXEC ▶"}
               </button>
             </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: "#333", textAlign: "center" }}>
-              Transactions sécurisées · Frais {"<"} $0.001 · Alimenté par Celo Mainnet & ERC-8004
+            <div style={{ marginTop: 6, fontSize: 9, color: "#00ff9f", opacity: 0.2, letterSpacing: "0.08em", textAlign: "center" }}>
+              ENCRYPTED · GAS &lt;$0.001 · CELO_MAINNET_42220 · ERC-8004
             </div>
           </div>
         </div>
 
         {/* ── RIGHT SIDEBAR ── */}
-        <div style={{ width: 220, borderLeft: "1px solid #111", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 12, flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em" }}>Réseau</div>
-          <div style={{ padding: "14px", borderRadius: 12, background: "#0d1f14", border: "1px solid #1a3d24" }}>
-            <div style={{ fontSize: 11, color: "#35D07F", fontWeight: 600, marginBottom: 8 }}>🟢 Celo Mainnet</div>
-            <div style={{ fontSize: 12, color: "#555", lineHeight: 1.8 }}>
-              Chain ID: 42220<br />RPC: forno.celo.org<br />Explorer: celoscan.io
+        <div style={{
+          width: 200, borderLeft: "1px solid rgba(0,255,159,0.15)",
+          padding: "16px 12px", display: "flex", flexDirection: "column", gap: 10,
+          flexShrink: 0, background: "rgba(0,255,159,0.02)",
+        }}>
+          <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.4, letterSpacing: "0.15em", borderBottom: "1px solid rgba(0,255,159,0.1)", paddingBottom: 6 }}>
+            // NETWORK_STATUS
+          </div>
+
+          {[
+            { label: "CHAIN", val: "CELO", sub: "ID:42220", color: "#00ff9f" },
+            { label: "RPC", val: "ONLINE", sub: "forno.celo.org", color: "#00ff9f" },
+            { label: "LATENCY", val: `${pingMs}ms`, sub: "REALTIME", color: "#ffbe0b" },
+            { label: "BLOCK", val: `#${(blockNum % 100000).toString().padStart(5, "0")}`, sub: "~5s FINALITY", color: "#00d4ff" },
+          ].map((item, i) => (
+            <div key={i} style={{
+              padding: "10px", borderRadius: 2,
+              background: `${item.color}06`, border: `1px solid ${item.color}20`,
+            }}>
+              <div style={{ fontSize: 8, color: item.color, opacity: 0.5, letterSpacing: "0.1em" }}>{item.label}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: item.color, textShadow: `0 0 8px ${item.color}` }}>{item.val}</div>
+              <div style={{ fontSize: 8, color: item.color, opacity: 0.35, letterSpacing: "0.05em" }}>{item.sub}</div>
+            </div>
+          ))}
+
+          <div style={{ padding: "10px", borderRadius: 2, background: "rgba(131,56,236,0.06)", border: "1px solid rgba(131,56,236,0.2)" }}>
+            <div style={{ fontSize: 8, color: "#8338ec", opacity: 0.7, letterSpacing: "0.1em", marginBottom: 4 }}>AI_MODEL</div>
+            <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.8, letterSpacing: "0.05em", opacity: 0.8 }}>
+              MISTRAL_8B<br />TOOLS:6_ACTIVE<br />ERC-8004_STD
             </div>
           </div>
-          <div style={{ padding: "14px", borderRadius: 12, background: "#1a1400", border: "1px solid #3d3000" }}>
-            <div style={{ fontSize: 11, color: "#FCFF52", fontWeight: 600, marginBottom: 8 }}>⚡ Performance</div>
-            <div style={{ fontSize: 12, color: "#555", lineHeight: 1.8 }}>
-              Block time: ~5s<br />Finality: instant<br />Gas: {"<"} $0.001
+
+          <div style={{ padding: "10px", borderRadius: 2, background: "rgba(255,190,11,0.06)", border: "1px solid rgba(255,190,11,0.2)" }}>
+            <div style={{ fontSize: 8, color: "#ffbe0b", opacity: 0.7, letterSpacing: "0.1em", marginBottom: 4 }}>IMPACT</div>
+            <div style={{ fontSize: 10, color: "#ffbe0b", lineHeight: 1.8, letterSpacing: "0.05em", opacity: 0.8 }}>
+              1.4B UNBANKED<br />25+ STABLES<br />11M+ MINIPAY
             </div>
           </div>
-          <div style={{ padding: "14px", borderRadius: 12, background: "#0d0d1a", border: "1px solid #1a1a3d" }}>
-            <div style={{ fontSize: 11, color: "#8888ff", fontWeight: 600, marginBottom: 8 }}>🤖 Agent Info</div>
-            <div style={{ fontSize: 12, color: "#555", lineHeight: 1.8 }}>
-              Standard: ERC-8004<br />Model: Mistral 8B<br />Tools: 6 actifs
-            </div>
-          </div>
-          <div style={{ padding: "14px", borderRadius: 12, background: "#0d0d0d", border: "1px solid #1a1a1a" }}>
-            <div style={{ fontSize: 11, color: "#fff", fontWeight: 600, marginBottom: 8 }}>🌍 Impact</div>
-            <div style={{ fontSize: 12, color: "#555", lineHeight: 1.8 }}>
-              1.4B non-bankés<br />25+ stablecoins<br />11M+ wallets MiniPay
-            </div>
-          </div>
-          <a href="https://celoscan.io" target="_blank" rel="noreferrer" style={{ marginTop: "auto", padding: "10px", borderRadius: 10, background: "#0d0d0d", border: "1px solid #1a1a1a", color: "#555", fontSize: 12, textAlign: "center", textDecoration: "none", display: "block" }}>
-            🔍 Voir sur CeloScan ↗
+
+          <a href="https://celoscan.io" target="_blank" rel="noreferrer" style={{
+            marginTop: "auto", padding: "8px", borderRadius: 2,
+            background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.2)",
+            color: "#00ff9f", fontSize: 9, textAlign: "center", textDecoration: "none",
+            letterSpacing: "0.1em", display: "block",
+            transition: "all 0.2s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 12px rgba(0,255,159,0.2)" }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = "none" }}
+          >
+            ⬡ CELOSCAN_EXPLORER ↗
           </a>
         </div>
       </div>
 
       <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
-        * { scrollbar-width: thin; scrollbar-color: #1a1a1a #050505; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #050505; }
-        ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 2px; }
+        @keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 8px #00ff9f; } 50% { opacity: 0.4; box-shadow: 0 0 3px #00ff9f; } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+        @keyframes datafall { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+        * { scrollbar-width: thin; scrollbar-color: rgba(0,255,159,0.2) transparent; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,255,159,0.2); border-radius: 0; }
+        input::placeholder { color: rgba(0,255,159,0.2); letter-spacing: 0.05em; }
+        * { box-sizing: border-box; }
       `}</style>
     </div>
   )
