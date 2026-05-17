@@ -39,7 +39,7 @@ const TOKENS: Record<string, { address: `0x${string}`; decimals: number; coingec
 }
 
 // ─── Mento V2 ─────────────────────────────────────────────────────────────────
-const BROKER          = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
+const BROKER          = "0x777B8E2F5F356c5c284342aFbF009D6552450d69" as `0x${string}`
 const BI_POOL_MANAGER = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
 
 // Exchange IDs Mento V2 Mainnet (CELO ↔ stablecoins)
