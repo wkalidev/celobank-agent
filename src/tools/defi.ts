@@ -123,7 +123,7 @@ const BROKER_ABI = [
   },
 ] as const
 
-const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6" as `0x${string}`
+const AAVE_POOL = "0x3e59a31363e2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
 
 // ─── Tool 1 : Portefeuille complet ────────────────────────────────────────────
 export const getPortfolioTool = tool(
