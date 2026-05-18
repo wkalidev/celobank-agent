@@ -39,14 +39,15 @@ const TOKENS: Record<string, { address: `0x${string}`; decimals: number; coingec
 }
 
 // ─── Mento V2 ─────────────────────────────────────────────────────────────────
-const BROKER          = "0x777B8E2F5F356c5c284342aFbF009D6552450d69" as `0x${string}`
+const BROKER          = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
 const BI_POOL_MANAGER = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
 
-// Exchange IDs Mento V2 Mainnet (CELO ↔ stablecoins)
 const EXCHANGE_IDS: Record<string, `0x${string}`> = {
   "CELO-cUSD":  "0x3135b662c38265d0655177091f1b647b4fef511103d06c016efdf18b46930d2c",
-  "CELO-cEUR":  "0xa896c3f7b883d3f44d9a001e2e2b2e96e0e9e83f5b3a0e7dfdd1c9a9c9a8b7c",
-  "CELO-cREAL": "0xb1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1",
+  "CELO-cEUR":  "0x746455363e8f55d04e0a2cc040d1b348a6c031b336ba6af6ae91515c194929c8",
+  "CELO-cREAL": "0xd11d52b973ddbb983cc2087aabcafd915fc3140cf9996aacc61db9710d1bde05",
+  "CELO-USDC":  "0xacc988382b66ee5456086643dcfd9a5ca43dd8f428f6ef22503d8b8013bcffd7",
+  "CELO-USDT":  "0x773bcec109cee923b5e04706044fd9d6a5121b1a6a4c059c36fdbe5b845d4e9b",
 }
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
