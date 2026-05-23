@@ -8,11 +8,10 @@ import {
   getMultiPriceTool,
 } from "../tools/defi.js"
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY!
-const MODEL        = "llama-3.1-8b-instant"
-const BASE_URL     = "https://api.groq.com/openai"
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY!
+const MODEL          = "ministral-3:8b"
+const BASE_URL       = "https://ollama.com"
 
-// ─── Tool registry ────────────────────────────────────────────────────────────
 const tools = {
   get_balance:       getBalanceTool,
   send_celo:         sendCeloTool,
@@ -24,7 +23,6 @@ const tools = {
   save_cusd:         saveCUSDTool,
 }
 
-// ─── Tool schemas (OpenAI format) ─────────────────────────────────────────────
 const toolSchemas = [
   {
     type: "function",
@@ -60,7 +58,8 @@ const toolSchemas = [
     function: {
       name: "get_celo_price",
       description: "Get current CELO price in USD",
-      parameters: { type: "object", properties: {} },
+      // FIX: required:[] empêche Groq d'envoyer null comme arguments
+      parameters: { type: "object", properties: {}, required: [] },
     },
   },
   {
@@ -77,6 +76,7 @@ const toolSchemas = [
             description: "Wallet address 0x... (optional, uses default wallet if omitted)",
           },
         },
+        required: [],
       },
     },
   },
@@ -95,6 +95,7 @@ const toolSchemas = [
               "Comma-separated token symbols, ex: 'CELO,cUSD,USDC'. Omit to get all prices.",
           },
         },
+        required: [],
       },
     },
   },
@@ -128,6 +129,7 @@ const toolSchemas = [
             description: "Wallet address 0x... (optional)",
           },
         },
+        required: [],
       },
     },
   },
@@ -147,20 +149,18 @@ const toolSchemas = [
   },
 ]
 
-// ─── Groq chat (OpenAI-compatible) ────────────────────────────────────────────
 async function groqChat(messages: any[]) {
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": `Bearer ${GROQ_API_KEY}`,
+      "Authorization": `Bearer ${OLLAMA_API_KEY}`,
     },
     body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, temperature: 0 }),
   })
   return res.json()
 }
 
-// ─── Agent loop ───────────────────────────────────────────────────────────────
 export async function runAgent(input: string): Promise<string> {
   const messages: any[] = [
     {
@@ -179,10 +179,10 @@ You have access to these tools on Celo Mainnet:
 
 RULES:
 1. ALWAYS call the appropriate tool — never invent data or prices.
-2. Detect the user's language and ALWAYS respond in that same language (French→French, English→English, Arabic→Arabic, Spanish→Spanish, Swahili→Swahili, Italian→Italian).
-3. When the user asks about "my balance" or "my portfolio", use get_portfolio.
+2. Detect the user's language and ALWAYS respond in that same language.
+3. When the user asks about balance or portfolio, use get_portfolio.
 4. When the user asks about prices of multiple tokens, use get_multi_price.
-5. When the user says "swap", "exchange", "convert" CELO, use swap_celo.
+5. When the user says swap/exchange/convert CELO, use swap_celo.
 6. Be warm, simple, and avoid technical jargon.`,
     },
     { role: "user", content: input },
@@ -193,7 +193,7 @@ RULES:
     const msg  = data.choices?.[0]?.message
 
     if (!msg) {
-      console.log("Raw response:", JSON.stringify(data))
+      console.log("Raw Groq response:", JSON.stringify(data))
       return "Erreur de réponse"
     }
 
@@ -201,8 +201,12 @@ RULES:
       messages.push(msg)
       for (const call of msg.tool_calls) {
         const toolName = call.function.name as keyof typeof tools
-        const args     = JSON.parse(call.function.arguments || "{}")
-        console.log(`  🔧 Tool appelé: ${toolName}`, args)
+        // FIX: arguments peut être null ou "null" — on force {} dans les deux cas
+        const rawArgs = call.function.arguments
+        const args = (rawArgs && rawArgs !== "null")
+          ? (JSON.parse(rawArgs) ?? {})
+          : {}
+        console.log(`  🔧 Tool: ${toolName}`, args)
         const result = await (tools[toolName] as any).invoke(args)
         messages.push({
           role:         "tool",

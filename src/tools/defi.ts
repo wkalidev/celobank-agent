@@ -223,9 +223,11 @@ export const getMultiPriceTool = tool(
 export const swapCeloTool = tool(
   async ({ amount, tokenOut }) => {
     try {
-      const symbol  = tokenOut.toUpperCase()
-      const token   = TOKENS[symbol]
-      if (!token) return `Token ${symbol} non supporté. Disponibles : cUSD, cEUR, cREAL`
+      const symbol = Object.keys(TOKENS).find(
+      k => k.toLowerCase() === tokenOut.toLowerCase()
+)
+      if (!symbol) return `Token "${tokenOut}" non supporté. Disponibles : cUSD, cEUR, cREAL`
+      const token = TOKENS[symbol]
 
       const exchangeKey = `CELO-${symbol}`
       const exchangeId  = EXCHANGE_IDS[exchangeKey]
