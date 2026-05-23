@@ -8,10 +8,12 @@
 
 [![Celo](https://img.shields.io/badge/Built%20on-Celo-35D07F?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiMzNUQwN0YiLz48L3N2Zz4=)](https://celo.org)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Deployed-FCFF52?style=for-the-badge)](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
+[![Self Agent](https://img.shields.io/badge/Self_Agent-Verified-6366f1?style=for-the-badge)](https://app.ai.self.xyz/agents)
+[![MiniPay](https://img.shields.io/badge/MiniPay-Compatible-35D07F?style=for-the-badge)](https://minipay.opera.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-[Demo](#demo) · [Features](#features) · [Quick Start](#quick-start) · [Architecture](#architecture)
+[Demo](https://celobank-agent.vercel.app) · [Features](#features) · [Quick Start](#quick-start) · [Architecture](#architecture)
 
 </div>
 
@@ -27,7 +29,7 @@ Western Union charges **10-15% fees** to send $200. A bank transfer takes **3-5 
 
 CeloBank Agent is an **autonomous AI agent** that acts as a complete bank — accessible via a simple chat interface in any language. No paperwork. No minimum balance. No branch visits.
 
-Built on **Celo Mainnet** with sub-cent transaction fees, powered by **ERC-8004** for verifiable on-chain identity.
+Built on **Celo Mainnet** with sub-cent transaction fees, powered by **ERC-8004** for verifiable on-chain identity, and **MiniPay compatible** for instant access to 15M+ users.
 
 ---
 
@@ -35,13 +37,15 @@ Built on **Celo Mainnet** with sub-cent transaction fees, powered by **ERC-8004*
 
 | Feature | Description |
 |---------|-------------|
-| 💬 **Natural Language** | Chat in French, English, Spanish, Arabic, Swahili, Italian |
+| 💬 **Natural Language** | Chat in French, English, Spanish, Arabic, Swahili, Italian, Portuguese, Chinese |
 | 💸 **Send Money** | Transfer CELO instantly to anyone, anywhere |
-| 📊 **Real-time Prices** | Live CELO price from CoinGecko |
+| 📊 **Real-time Prices** | Live CELO + multi-token prices from CoinGecko |
 | 🏦 **DeFi Savings** | Deposit cUSD on Aave to earn interest automatically |
-| 🔄 **Token Swap** | Exchange CELO ↔ cUSD via Ubeswap |
-| 📈 **Portfolio** | Check balances and DeFi positions |
+| 🔄 **Token Swap** | Exchange CELO ↔ cUSD / cEUR / cREAL via Mento V2 |
+| 📈 **Portfolio** | Full multi-token balances and DeFi positions |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity — deployed on Celo Mainnet |
+| 🔐 **Self Agent ID** | Privacy-first ZK-verified onchain identity via Self Protocol |
+| 📱 **MiniPay Compatible** | Auto-detect & auto-connect — zero friction for 15M+ MiniPay users |
 | ⚡ **Sub-cent fees** | Gas fees under $0.001 on Celo |
 
 ---
@@ -59,25 +63,55 @@ Built on **Celo Mainnet** with sub-cent transaction fees, powered by **ERC-8004*
 
 ---
 
+## 🔐 Self Agent ID
+
+CeloBank Agent is registered as a verified onchain AI agent via [Self Protocol](https://app.ai.self.xyz):
+
+| Property | Value |
+|---|---|
+| Agent Address | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` |
+| Network | Celo Mainnet |
+| Verification | ✅ ZK-verified onchain identity |
+| Privacy | Zero personal data exposed — cryptographic proof only |
+
+Every agent action is cryptographically signed — verifiable on-chain, no trust required.
+
+---
+
+## 📱 MiniPay Integration
+
+CeloBank Agent is fully compatible with [MiniPay](https://minipay.opera.com) — Opera's lightweight wallet with 15M+ users across Africa.
+
+- **Auto-detect**: The app automatically detects the MiniPay environment
+- **Auto-connect**: Wallet connects in one tap — no popups, no friction
+- **Gas in cUSD**: Users pay gas fees in stablecoins — no need to hold CELO for gas
+- **Zero setup**: Works out of the box inside the MiniPay browser
+
+---
+
 ## 🏗️ Architecture
 
 ```
-User (any language)
+User (any language, any device)
        ↓
   Chat Interface (React + Vite)
+  └── MiniPay auto-detection & auto-connect
        ↓
-  Express API Server
+  Express API Server (Railway)
        ↓
-  AI Agent (Ollama / Mistral 8B)
+  AI Agent (Groq — LLaMA 3.1-8b-instant)
   ├── get_celo_price    → CoinGecko API
   ├── get_balance       → Celo RPC (viem)
+  ├── get_portfolio     → Multi-token balances
+  ├── get_multi_price   → Live prices + 24h change
   ├── send_celo         → Celo Mainnet tx
+  ├── swap_celo         → Mento V2 router
   ├── get_aave_position → Aave V3 contract
-  ├── save_cusd         → Aave supply
-  └── swap_celo_to_cusd → Ubeswap router
+  └── save_cusd         → Aave supply
        ↓
   Celo Mainnet (Chain ID: 42220)
-  └── ERC-8004 Identity Registry: 0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
+  ├── ERC-8004 Registry: 0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
+  └── Self Agent ID: ZK-verified onchain identity
 ```
 
 ---
@@ -87,6 +121,7 @@ User (any language)
 ### Prerequisites
 - Node.js v18+
 - Git
+- [Groq API key](https://console.groq.com) (free)
 
 ### Installation
 
@@ -106,9 +141,9 @@ cp .env.example .env
 ### Environment Variables
 
 ```env
-PRIVATE_KEY=0x...                    # Wallet private key
+PRIVATE_KEY=0x...                    # Agent wallet private key
 CELO_RPC=https://forno.celo.org      # Celo Mainnet RPC
-OLLAMA_API_KEY=ollama_...            # From ollama.com/settings/keys
+GROQ_API_KEY=gsk_...                 # From console.groq.com (free)
 CONTRACT_ADDRESS=0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
 ```
 
@@ -139,7 +174,7 @@ npm run dev
 🤖 "✅ 10 cUSD deposited on Aave. Earning interest automatically 💰"
 
 👤 "Swap 1 CELO to cUSD"
-🤖 "✅ Swap successful! 1 CELO → cUSD via Ubeswap"
+🤖 "✅ Swap successful! 1 CELO → cUSD via Mento V2"
 ```
 
 ---
@@ -150,29 +185,18 @@ npm run dev
 
 ---
 
-## 🔗 ERC-8004 Agent Identity
-
-CeloBank Agent is the **first autonomous AI bank** registered on the ERC-8004 Identity Registry on Celo Mainnet — the emerging trust standard for autonomous AI agents.
-
-- **Identity**: Portable, verifiable on-chain NFT
-- **Capabilities**: get_balance, send_celo, get_celo_price, save_cusd, swap_celo_to_cusd, get_aave_position
-- **Reputation**: Track record that travels across organizations
-- **Verification**: Cryptographic enforcement, no trust required
-
-Track this agent: [celoscan.io](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
-
----
-
 ## 🛠️ Tech Stack
 
 - **Blockchain**: Celo L2 (OP Stack) — **Mainnet**
 - **Smart Contract**: ERC-8004 Identity Registry (Solidity 0.8.25)
-- **AI**: Ollama cloud (Mistral 8B)
+- **AI**: Groq Cloud — LLaMA 3.1-8b-instant (ultra-fast inference)
 - **Agent Framework**: Custom tool-calling loop with fetch
 - **On-chain**: viem v2
-- **DeFi**: Aave V3, Ubeswap
+- **DeFi**: Aave V3, Mento V2
+- **Identity**: ERC-8004 + Self Protocol (ZK-verified)
 - **UI**: React + Vite
 - **API**: Express.js
+- **Deploy**: Vercel (UI) + Railway (API)
 - **Language**: TypeScript
 
 ---
@@ -188,12 +212,12 @@ celobank-agent/
 │   └── register.ts         # Agent registration script
 ├── src/
 │   ├── agent/
-│   │   └── agent.ts        # AI agent with tool-calling loop
+│   │   └── agent.ts        # AI agent — Groq LLaMA 3.1 + tool-calling loop
 │   ├── tools/
 │   │   ├── celo.ts         # On-chain tools (balance, send, price)
-│   │   └── defi.ts         # DeFi tools (Aave, swap)
+│   │   └── defi.ts         # DeFi tools (Aave, Mento swap)
 │   ├── ui/
-│   │   ├── App.tsx         # React chat interface
+│   │   ├── App.tsx         # React chat interface + MiniPay detection
 │   │   ├── main.tsx        # Entry point
 │   │   └── logo.svg        # CeloBank logo
 │   ├── server.ts           # Express API server
@@ -209,11 +233,19 @@ celobank-agent/
 
 ## 🏆 Hackathon
 
-Built for **Build Agents for the Real World V2** by Celo Public Goods and **The Synthesis** by Ethereum Foundation.
+Built for the **Celo Onchain Agents Hackathon 2026** — May 22 to June 15, 2026.
 
-- **Track 1**: Best Agent on Celo — $3,000
-- **Track 3**: Highest Rank on AgentScan — $500
-- **The Synthesis**: Ethereum Foundation — $10,000
+| Track | Prize |
+|-------|-------|
+| 🥇 Track 1 — Best Agent on Celo | $2,500 |
+| 🥈 Track 2 — Most Onchain Transactions | $500 |
+| 🥉 Track 3 — Highest Rank on 8004scan | $500 |
+
+**Why CeloBank wins:**
+- Real transactions on Celo Mainnet — every chat message can trigger an on-chain tx
+- ERC-8004 registered + Self Agent ID verified — top-tier agent identity stack
+- MiniPay compatible — immediate access to 15M+ real users
+- Financial inclusion mission aligned with Celo's core values
 
 ---
 
@@ -230,7 +262,5 @@ MIT © 2026 [@wkalidev](https://github.com/wkalidev)
 ---
 
 <div align="center">
-
-**Built with ❤️ by [Wkalidev](https://github.com/wkalidev) for the unbanked · Powered by Celo Mainnet · Secured by ERC-8004**
-
+**Built with ❤️ by [Wkalidev](https://github.com/wkalidev) for the unbanked · Powered by Celo Mainnet · Groq LLaMA 3.1 · ERC-8004 · Self Agent ID**
 </div>

@@ -30,14 +30,19 @@ const LANGUAGES = [
 
 const GLITCH_CHARS = "!<>-_\\/[]{}—=+*^?#@$%&"
 
+// ─── MiniPay Detection ────────────────────────────────────────────────────────
+function detectMiniPay(): boolean {
+  if (typeof window === "undefined") return false
+  const eth = (window as any).ethereum
+  return !!(eth?.isMiniPay)
+}
+
 function GlitchText({ text, className = "" }: { text: string; className?: string }) {
   const [display, setDisplay] = useState(text)
-  const [glitching, setGlitching] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.97) {
-        setGlitching(true)
         let iter = 0
         const glitch = setInterval(() => {
           setDisplay(text.split("").map((c, i) =>
@@ -47,7 +52,6 @@ function GlitchText({ text, className = "" }: { text: string; className?: string
           if (iter > text.length) {
             clearInterval(glitch)
             setDisplay(text)
-            setGlitching(false)
           }
         }, 40)
       }
@@ -113,11 +117,36 @@ function DataStream() {
   )
 }
 
+// ─── MiniPay Banner ───────────────────────────────────────────────────────────
+function MiniPayBanner() {
+  return (
+    <div style={{
+      padding: "6px 20px",
+      background: "rgba(53,208,127,0.12)",
+      borderBottom: "1px solid rgba(53,208,127,0.4)",
+      display: "flex", alignItems: "center", gap: 8,
+      flexShrink: 0, zIndex: 10,
+    }}>
+      <span style={{ fontSize: 14 }}>📱</span>
+      <span style={{ fontSize: 10, color: "#35D07F", letterSpacing: "0.1em", fontWeight: 600 }}>
+        MINIPAY DETECTED — WALLET AUTO-CONNECTED · GAS FEES IN cUSD
+      </span>
+      <span style={{ marginLeft: "auto", fontSize: 9, color: "#35D07F", opacity: 0.6 }}>
+        15M+ USERS
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
+  const isMiniPay = detectMiniPay()
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "agent",
-      content: `> CELOBANK_AGENT_v2.0 INITIALIZED\n> CONNECTING TO CELO MAINNET...\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nACCÈS À LA FINANCE DÉCENTRALISÉE POUR 1.4B DE NON-BANKÉS.\n\nSÉLECTIONNEZ UNE ACTION OU ENTREZ UNE COMMANDE.\nJE PARLE TOUTES LES LANGUES. 🌍`,
+      content: isMiniPay
+        ? `> CELOBANK_AGENT_v2.0 INITIALIZED\n> MINIPAY WALLET DETECTED ✓\n> CONNECTING TO CELO MAINNET...\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nBienvenue sur CeloBank Agent 🌍\nVotre wallet MiniPay est connecté automatiquement.\nQue puis-je faire pour vous ?`
+        : `> CELOBANK_AGENT_v2.0 INITIALIZED\n> CONNECTING TO CELO MAINNET...\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nACCÈS À LA FINANCE DÉCENTRALISÉE POUR 1.4B DE NON-BANKÉS.\n\nSÉLECTIONNEZ UNE ACTION OU ENTREZ UNE COMMANDE.\nJE PARLE TOUTES LES LANGUES. 🌍`,
       timestamp: new Date(),
     },
   ])
@@ -130,6 +159,14 @@ export default function App() {
   const [pingMs, setPingMs] = useState(Math.floor(Math.random() * 20) + 5)
   const bottomRef = useRef<HTMLDivElement>(null)
   const { address } = useAccount()
+
+  // Auto-connect MiniPay wallet
+  useEffect(() => {
+    if (isMiniPay && !address) {
+      const eth = (window as any).ethereum
+      eth?.request({ method: "eth_requestAccounts" }).catch(console.error)
+    }
+  }, [isMiniPay, address])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -208,6 +245,9 @@ export default function App() {
       <HexGrid />
       <DataStream />
 
+      {/* ── MINIPAY BANNER ── */}
+      {isMiniPay && <MiniPayBanner />}
+
       {/* ── HEADER ── */}
       <div style={{
         padding: "0 20px", height: 56, flexShrink: 0, zIndex: 10,
@@ -267,6 +307,7 @@ export default function App() {
             { label: "GAS", val: "<$0.001", color: "#00ff9f" },
             { label: "ERC", val: "8004", color: "#00d4ff" },
             { label: "NET", val: "CELO", color: "#ffbe0b" },
+            ...(isMiniPay ? [{ label: "APP", val: "MINIPAY", color: "#35D07F" }] : []),
           ].map((s, i) => (
             <div key={i} style={{
               padding: "3px 8px", borderRadius: 2, fontSize: 9, letterSpacing: "0.1em",
@@ -278,9 +319,18 @@ export default function App() {
           ))}
         </div>
 
-        <div style={{ marginLeft: "auto" }}>
-          <ConnectButton />
-        </div>
+        {/* Hide ConnectButton in MiniPay (wallet auto-connected) */}
+        {!isMiniPay && (
+          <div style={{ marginLeft: "auto" }}>
+            <ConnectButton />
+          </div>
+        )}
+
+        {isMiniPay && address && (
+          <div style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 2, background: "rgba(53,208,127,0.1)", border: "1px solid rgba(53,208,127,0.3)", fontSize: 10, color: "#35D07F", letterSpacing: "0.05em" }}>
+            📱 {address.slice(0, 6)}...{address.slice(-4)}
+          </div>
+        )}
       </div>
 
       {/* ── BODY ── */}
@@ -346,10 +396,19 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: "auto", padding: "10px", borderRadius: 2, background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.15)" }}>
+          {/* ERC-8004 */}
+          <div style={{ marginTop: 8, padding: "10px", borderRadius: 2, background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.15)" }}>
             <div style={{ fontSize: 9, color: "#00ff9f", letterSpacing: "0.1em", marginBottom: 4, opacity: 0.7 }}>⬡ ERC-8004 IDENTITY</div>
             <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.35, lineHeight: 1.8, letterSpacing: "0.05em" }}>
               AGENT REGISTERED<br />ON-CHAIN VERIFIABLE<br />CELO MAINNET
+            </div>
+          </div>
+
+          {/* Self Agent ID */}
+          <div style={{ padding: "10px", borderRadius: 2, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.25)" }}>
+            <div style={{ fontSize: 9, color: "#6366f1", letterSpacing: "0.1em", marginBottom: 4, opacity: 0.9 }}>🔐 SELF AGENT ID</div>
+            <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.6, lineHeight: 1.8, letterSpacing: "0.05em" }}>
+              VERIFIED ONCHAIN<br />PRIVACY-FIRST ZK<br />IDENTITY PROOF
             </div>
           </div>
         </div>
@@ -392,15 +451,9 @@ export default function App() {
                   </div>
                   <div style={{
                     padding: "12px 16px", borderRadius: 2,
-                    background: msg.role === "user"
-                      ? "rgba(0,212,255,0.06)"
-                      : "rgba(0,255,159,0.04)",
-                    border: msg.role === "user"
-                      ? "1px solid rgba(0,212,255,0.3)"
-                      : "1px solid rgba(0,255,159,0.2)",
-                    boxShadow: msg.role === "user"
-                      ? "0 0 15px rgba(0,212,255,0.1)"
-                      : "0 0 15px rgba(0,255,159,0.08)",
+                    background: msg.role === "user" ? "rgba(0,212,255,0.06)" : "rgba(0,255,159,0.04)",
+                    border: msg.role === "user" ? "1px solid rgba(0,212,255,0.3)" : "1px solid rgba(0,255,159,0.2)",
+                    boxShadow: msg.role === "user" ? "0 0 15px rgba(0,212,255,0.1)" : "0 0 15px rgba(0,255,159,0.08)",
                     fontSize: 13, lineHeight: 1.8,
                     color: msg.role === "user" ? "#00d4ff" : "#00ff9f",
                     whiteSpace: "pre-wrap",
@@ -419,7 +472,9 @@ export default function App() {
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 10, fontWeight: 700, color: "#00d4ff",
                     boxShadow: "0 0 10px rgba(0,212,255,0.3)",
-                  }}>USR</div>
+                  }}>
+                    {isMiniPay ? "📱" : "USR"}
+                  </div>
                 )}
               </div>
             ))}
@@ -464,21 +519,20 @@ export default function App() {
                   caretColor: "#00ff9f", letterSpacing: "0.02em",
                 }}
               />
-              
               <button onClick={() => sendMessage()} disabled={loading || !input.trim()} style={{
-  padding: "8px 16px", borderRadius: 2, cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-  background: loading || !input.trim() ? "rgba(0,255,159,0.05)" : "rgba(0,255,159,0.15)",
-  color: loading || !input.trim() ? "rgba(0,255,159,0.2)" : "#00ff9f",
-  fontFamily: "inherit", fontSize: 11, letterSpacing: "0.1em", fontWeight: 700,
-  border: `1px solid ${loading || !input.trim() ? "rgba(0,255,159,0.1)" : "rgba(0,255,159,0.5)"}`,
-  boxShadow: loading || !input.trim() ? "none" : "0 0 12px rgba(0,255,159,0.2)",
-  transition: "all 0.2s",
-}}>
+                padding: "8px 16px", borderRadius: 2, cursor: loading || !input.trim() ? "not-allowed" : "pointer",
+                background: loading || !input.trim() ? "rgba(0,255,159,0.05)" : "rgba(0,255,159,0.15)",
+                color: loading || !input.trim() ? "rgba(0,255,159,0.2)" : "#00ff9f",
+                fontFamily: "inherit", fontSize: 11, letterSpacing: "0.1em", fontWeight: 700,
+                border: `1px solid ${loading || !input.trim() ? "rgba(0,255,159,0.1)" : "rgba(0,255,159,0.5)"}`,
+                boxShadow: loading || !input.trim() ? "none" : "0 0 12px rgba(0,255,159,0.2)",
+                transition: "all 0.2s",
+              }}>
                 {loading ? "WAIT..." : "EXEC ▶"}
               </button>
             </div>
             <div style={{ marginTop: 6, fontSize: 9, color: "#00ff9f", opacity: 0.2, letterSpacing: "0.08em", textAlign: "center" }}>
-              ENCRYPTED · GAS &lt;$0.001 · CELO_MAINNET_42220 · ERC-8004
+              ENCRYPTED · GAS &lt;$0.001 · CELO_MAINNET_42220 · ERC-8004 · GROQ_LLAMA3.1
             </div>
           </div>
         </div>
@@ -512,18 +566,25 @@ export default function App() {
           <div style={{ padding: "10px", borderRadius: 2, background: "rgba(131,56,236,0.06)", border: "1px solid rgba(131,56,236,0.2)" }}>
             <div style={{ fontSize: 8, color: "#8338ec", opacity: 0.7, letterSpacing: "0.1em", marginBottom: 4 }}>AI_MODEL</div>
             <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.8, letterSpacing: "0.05em", opacity: 0.8 }}>
-              MISTRAL_8B<br />TOOLS:6_ACTIVE<br />ERC-8004_STD
+              GROQ_LLAMA3.1<br />TOOLS:8_ACTIVE<br />ERC-8004_STD
+            </div>
+          </div>
+
+          <div style={{ padding: "10px", borderRadius: 2, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)" }}>
+            <div style={{ fontSize: 8, color: "#6366f1", opacity: 0.7, letterSpacing: "0.1em", marginBottom: 4 }}>SELF_AGENT</div>
+            <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.8, letterSpacing: "0.05em", opacity: 0.8 }}>
+              ZK_VERIFIED<br />PRIVACY_FIRST<br />ONCHAIN_ID
             </div>
           </div>
 
           <div style={{ padding: "10px", borderRadius: 2, background: "rgba(255,190,11,0.06)", border: "1px solid rgba(255,190,11,0.2)" }}>
             <div style={{ fontSize: 8, color: "#ffbe0b", opacity: 0.7, letterSpacing: "0.1em", marginBottom: 4 }}>IMPACT</div>
             <div style={{ fontSize: 10, color: "#ffbe0b", lineHeight: 1.8, letterSpacing: "0.05em", opacity: 0.8 }}>
-              1.4B UNBANKED<br />25+ STABLES<br />11M+ MINIPAY
+              1.4B UNBANKED<br />25+ STABLES<br />15M+ MINIPAY
             </div>
           </div>
 
-          <a href="https://celoscan.io" target="_blank" rel="noreferrer" style={{
+          <a href="https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" target="_blank" rel="noreferrer" style={{
             marginTop: "auto", padding: "8px", borderRadius: 2,
             background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.2)",
             color: "#00ff9f", fontSize: 9, textAlign: "center", textDecoration: "none",

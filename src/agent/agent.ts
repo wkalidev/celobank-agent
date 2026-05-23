@@ -8,20 +8,20 @@ import {
   getMultiPriceTool,
 } from "../tools/defi.js"
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY!
-const MODEL          = "ministral-3:8b"
-const BASE_URL       = "https://ollama.com"
+const GROQ_API_KEY = process.env.GROQ_API_KEY!
+const MODEL        = "llama-3.1-8b-instant"
+const BASE_URL     = "https://api.groq.com/openai"
 
 // ─── Tool registry ────────────────────────────────────────────────────────────
 const tools = {
-  get_balance:      getBalanceTool,
-  send_celo:        sendCeloTool,
-  get_celo_price:   getCeloPriceTool,
-  get_portfolio:    getPortfolioTool,
-  get_multi_price:  getMultiPriceTool,
-  swap_celo:        swapCeloTool,
+  get_balance:       getBalanceTool,
+  send_celo:         sendCeloTool,
+  get_celo_price:    getCeloPriceTool,
+  get_portfolio:     getPortfolioTool,
+  get_multi_price:   getMultiPriceTool,
+  swap_celo:         swapCeloTool,
   get_aave_position: getAavePositionTool,
-  save_cusd:        saveCUSDTool,
+  save_cusd:         saveCUSDTool,
 }
 
 // ─── Tool schemas (OpenAI format) ─────────────────────────────────────────────
@@ -147,13 +147,13 @@ const toolSchemas = [
   },
 ]
 
-// ─── Ollama chat ──────────────────────────────────────────────────────────────
-async function ollamaChat(messages: any[]) {
+// ─── Groq chat (OpenAI-compatible) ────────────────────────────────────────────
+async function groqChat(messages: any[]) {
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, temperature: 0 }),
   })
@@ -165,7 +165,7 @@ export async function runAgent(input: string): Promise<string> {
   const messages: any[] = [
     {
       role: "system",
-      content: `You are CeloBank Agent — an autonomous bank for the unbanked in Africa, Asia and Latin America.
+      content: `You are CeloBank Agent — an autonomous AI bank for the unbanked in Africa, Asia and Latin America.
 
 You have access to these tools on Celo Mainnet:
 - get_balance       : native CELO balance of any address
@@ -189,7 +189,7 @@ RULES:
   ]
 
   for (let i = 0; i < 5; i++) {
-    const data = await ollamaChat(messages)
+    const data = await groqChat(messages)
     const msg  = data.choices?.[0]?.message
 
     if (!msg) {
@@ -205,9 +205,9 @@ RULES:
         console.log(`  🔧 Tool appelé: ${toolName}`, args)
         const result = await (tools[toolName] as any).invoke(args)
         messages.push({
-          role:        "tool",
+          role:         "tool",
           tool_call_id: call.id,
-          content:     String(result),
+          content:      String(result),
         })
       }
       continue
