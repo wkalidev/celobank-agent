@@ -1,0 +1,12 @@
+{
+  "frame": {
+    "version": "1",
+    "name": "CeloBank Agent",
+    "iconUrl": "https://celobank-agent.vercel.app/logo.svg",
+    "homeUrl": "https://celobank-agent.vercel.app",
+    "imageUrl": "https://celobank-agent.vercel.app/logo.svg",
+    "buttonTitle": "Open CeloBank",
+    "splashImageUrl": "https://celobank-agent.vercel.app/logo.svg",
+    "splashBackgroundColor": "#020408"
+  }
+}
