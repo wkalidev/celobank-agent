@@ -15,7 +15,7 @@
     "splashImageUrl": "https://celobank-agent.vercel.app/logo.svg",
     "splashBackgroundColor": "#020408",
     "subtitle": "AI banking for the unbanked",
-    "description": "Send, swap & earn on Celo. Supports 8 languages. Powered by AI.",
+    "description": "Send, swap earn on Celo. Supports 8 languages. Powered by AI.",
     "primaryCategory": "finance",
     "tags": ["celo", "defi", "banking", "africa", "stablecoin"]
   }
