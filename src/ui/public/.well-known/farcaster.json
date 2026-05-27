@@ -1,4 +1,10 @@
 {
+  "accountAssociation": {
+    "header": "eyJmaWQiOjkxNDc5MywidHlwZSI6ImF1dGgiLCJrZXkiOiIweERFQWNEZTZlQzI3RmQwY0Q5NzJjMTIzMkM0ZjBkNDE3MWRkYTIzNTcifQ",
+    "payload": "eyJkb21haW4iOiJjZWxvYmFuay1hZ2VudC52ZXJjZWwuYXBwIn0",
+    "signature": "W1reW3apDxK6vsVdu/NHr7ZxbTwW26krEWO08prPLFlNmHM3E01e3GlcSDZeqLlfnO9lBhnSN02OJ41+3dGSxhw="
+},
+
   "frame": {
     "version": "1",
     "name": "CeloBank Agent",
