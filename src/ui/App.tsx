@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useAccount } from 'wagmi'
+import { useAccount, useConnect } from 'wagmi'
+import { sdk } from '@farcaster/frame-sdk'
 
 interface Message {
   role: "user" | "agent"
@@ -138,8 +139,34 @@ function MiniPayBanner() {
   )
 }
 
+// ─── Farcaster Banner ─────────────────────────────────────────────────────────
+function FarcasterBanner({ username }: { username?: string }) {
+  return (
+    <div style={{
+      padding: "6px 20px",
+      background: "rgba(139,92,246,0.12)",
+      borderBottom: "1px solid rgba(139,92,246,0.4)",
+      display: "flex", alignItems: "center", gap: 8,
+      flexShrink: 0, zIndex: 10,
+    }}>
+      <span style={{ fontSize: 14 }}>🟣</span>
+      <span style={{ fontSize: 10, color: "#a78bfa", letterSpacing: "0.1em", fontWeight: 600 }}>
+        FARCASTER MINI APP — WALLET AUTO-CONNECTED
+        {username ? ` · @${username.toUpperCase()}` : ""}
+      </span>
+      <span style={{ marginLeft: "auto", fontSize: 9, color: "#a78bfa", opacity: 0.6 }}>
+        WARPCAST
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
   const isMiniPay = detectMiniPay()
+
+  // 🟣 Farcaster state
+  const [isFarcaster, setIsFarcaster] = useState(false)
+  const [farcasterUser, setFarcasterUser] = useState<{ fid?: number; username?: string } | null>(null)
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -159,6 +186,42 @@ export default function App() {
   const [pingMs, setPingMs] = useState(Math.floor(Math.random() * 20) + 5)
   const bottomRef = useRef<HTMLDivElement>(null)
   const { address } = useAccount()
+  const { connect, connectors } = useConnect()
+
+  // 🟣 Farcaster Mini App — détection + auto-connect wallet
+  useEffect(() => {
+    async function initFarcaster() {
+      try {
+        const context = await sdk.context
+        if (context?.user) {
+          setIsFarcaster(true)
+          setFarcasterUser({
+            fid: context.user.fid,
+            username: context.user.username,
+          })
+
+          // Auto-connect le wallet Farcaster natif
+          const farcasterConnector = connectors.find(c => c.id === 'farcasterMiniApp')
+          if (farcasterConnector && !address) {
+            connect({ connector: farcasterConnector })
+          }
+
+          // Message de bienvenue Farcaster
+          setMessages([{
+            role: "agent",
+            content: `> CELOBANK_AGENT_v2.0 INITIALIZED\n> FARCASTER MINI APP DETECTED ✓\n> WALLET AUTO-CONNECTING...\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nWelcome${context.user.username ? ` @${context.user.username}` : ''} 👋\nYour Farcaster wallet is connecting automatically.\nWhat can I do for you?`,
+            timestamp: new Date(),
+          }])
+
+          // Cacher le splash screen Farcaster
+          await sdk.actions.ready()
+        }
+      } catch {
+        // Pas dans Farcaster — comportement normal
+      }
+    }
+    initFarcaster()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-connect MiniPay wallet
   useEffect(() => {
@@ -245,8 +308,9 @@ export default function App() {
       <HexGrid />
       <DataStream />
 
-      {/* ── MINIPAY BANNER ── */}
+      {/* ── BANNERS ── */}
       {isMiniPay && <MiniPayBanner />}
+      {isFarcaster && !isMiniPay && <FarcasterBanner username={farcasterUser?.username} />}
 
       {/* ── HEADER ── */}
       <div style={{
@@ -308,6 +372,7 @@ export default function App() {
             { label: "ERC", val: "8004", color: "#00d4ff" },
             { label: "NET", val: "CELO", color: "#ffbe0b" },
             ...(isMiniPay ? [{ label: "APP", val: "MINIPAY", color: "#35D07F" }] : []),
+            ...(isFarcaster ? [{ label: "APP", val: "FARCASTER", color: "#a78bfa" }] : []),
           ].map((s, i) => (
             <div key={i} style={{
               padding: "3px 8px", borderRadius: 2, fontSize: 9, letterSpacing: "0.1em",
@@ -319,16 +384,22 @@ export default function App() {
           ))}
         </div>
 
-        {/* Hide ConnectButton in MiniPay (wallet auto-connected) */}
-        {!isMiniPay && (
-          <div style={{ marginLeft: "auto" }}>
-            <ConnectButton />
-          </div>
-        )}
-
+        {/* Wallet display — 3 cas : MiniPay / Farcaster / RainbowKit */}
         {isMiniPay && address && (
           <div style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 2, background: "rgba(53,208,127,0.1)", border: "1px solid rgba(53,208,127,0.3)", fontSize: 10, color: "#35D07F", letterSpacing: "0.05em" }}>
             📱 {address.slice(0, 6)}...{address.slice(-4)}
+          </div>
+        )}
+
+        {isFarcaster && !isMiniPay && address && (
+          <div style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 2, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.3)", fontSize: 10, color: "#a78bfa", letterSpacing: "0.05em" }}>
+            🟣 {farcasterUser?.username ? `@${farcasterUser.username}` : `${address.slice(0,6)}...${address.slice(-4)}`}
+          </div>
+        )}
+
+        {!isMiniPay && !isFarcaster && (
+          <div style={{ marginLeft: "auto" }}>
+            <ConnectButton />
           </div>
         )}
       </div>
@@ -468,12 +539,14 @@ export default function App() {
                 {msg.role === "user" && (
                   <div style={{
                     width: 28, height: 28, borderRadius: 2, flexShrink: 0,
-                    background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.4)",
+                    background: isFarcaster ? "rgba(139,92,246,0.1)" : "rgba(0,212,255,0.1)",
+                    border: isFarcaster ? "1px solid rgba(139,92,246,0.4)" : "1px solid rgba(0,212,255,0.4)",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 10, fontWeight: 700, color: "#00d4ff",
-                    boxShadow: "0 0 10px rgba(0,212,255,0.3)",
+                    fontSize: 10, fontWeight: 700,
+                    color: isFarcaster ? "#a78bfa" : "#00d4ff",
+                    boxShadow: isFarcaster ? "0 0 10px rgba(139,92,246,0.3)" : "0 0 10px rgba(0,212,255,0.3)",
                   }}>
-                    {isMiniPay ? "📱" : "USR"}
+                    {isMiniPay ? "📱" : isFarcaster ? "🟣" : "USR"}
                   </div>
                 )}
               </div>

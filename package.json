@@ -22,6 +22,8 @@
   "dependencies": {
     "@aave/contract-helpers": "^1.38.0",
     "@aave/math-utils": "^1.38.0",
+    "@farcaster/frame-sdk": "^0.2.0",
+    "@farcaster/miniapp-wagmi-connector": "^2.0.0",
     "@langchain/core": "^1.1.46",
     "@langchain/google-genai": "^2.1.30",
     "@langchain/groq": "^1.2.0",

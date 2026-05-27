@@ -2,6 +2,7 @@ import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { defineChain } from 'viem'
+import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector'
 import '@rainbow-me/rainbowkit/styles.css'
 
 const celo = defineChain({
@@ -16,6 +17,9 @@ const config = getDefaultConfig({
   appName: 'CeloBank Agent',
   projectId: 'celobank',
   chains: [celo],
+  // 🟣 Connecteur Farcaster en premier — auto-connect dans Warpcast
+  // RainbowKit garde ses propres connecteurs en fallback pour le browser normal
+  connectors: [farcasterMiniApp()],
 })
 
 const queryClient = new QueryClient()
