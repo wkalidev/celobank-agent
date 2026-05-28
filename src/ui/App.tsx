@@ -306,15 +306,16 @@ export default function App() {
         {/* Quick actions — barre horizontale scrollable */}
         <div style={{ flexShrink: 0, borderTop: "1px solid rgba(0,255,159,0.1)", background: "rgba(0,0,0,0.4)" }}>
           <div style={{ display: "flex", gap: 6, padding: "8px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
+            {/* Lang picker — toujours visible en premier */}
+            <button onClick={() => setShowLangPicker(v => !v)} style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", fontFamily: "inherit", fontSize: 10, whiteSpace: "nowrap", flexShrink: 0, background: showLangPicker ? "rgba(0,255,159,0.15)" : "rgba(0,255,159,0.05)", border: `1px solid ${showLangPicker ? "rgba(0,255,159,0.6)" : "rgba(0,255,159,0.3)"}`, color: "#00ff9f", fontWeight: 700 }}>
+              {selectedLang ? `${LANGUAGES.find(l => l.code === selectedLang)?.flag} ${LANGUAGES.find(l => l.code === selectedLang)?.code.toUpperCase()}` : "🌍 LANG"}
+            </button>
+            <div style={{ width: 1, background: "rgba(0,255,159,0.15)", flexShrink: 0, margin: "2px 0" }} />
             {QUICK_ACTIONS.map((action, i) => (
               <button key={i} onClick={() => sendMessage(action.msg)} style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", fontFamily: "inherit", fontSize: 10, letterSpacing: "0.04em", whiteSpace: "nowrap", flexShrink: 0, background: `${action.color}08`, border: `1px solid ${action.color}40`, color: action.color, textShadow: `0 0 6px ${action.color}60` }}>
                 {action.label}
               </button>
             ))}
-            {/* Lang picker */}
-            <button onClick={() => setShowLangPicker(v => !v)} style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", fontFamily: "inherit", fontSize: 10, whiteSpace: "nowrap", flexShrink: 0, background: "rgba(0,255,159,0.05)", border: "1px solid rgba(0,255,159,0.3)", color: "#00ff9f" }}>
-              {selectedLang ? LANGUAGES.find(l => l.code === selectedLang)?.flag : "🌍 LANG"}
-            </button>
           </div>
 
           {/* Lang dropdown */}
