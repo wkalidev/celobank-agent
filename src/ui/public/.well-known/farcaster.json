@@ -3,8 +3,7 @@
     "header": "eyJmaWQiOjkxNDc5MywidHlwZSI6ImF1dGgiLCJrZXkiOiIweERFQWNEZTZlQzI3RmQwY0Q5NzJjMTIzMkM0ZjBkNDE3MWRkYTIzNTcifQ",
     "payload": "eyJkb21haW4iOiJjZWxvYmFuay1hZ2VudC52ZXJjZWwuYXBwIn0",
     "signature": "W1reW3apDxK6vsVdu/NHr7ZxbTwW26krEWO08prPLFlNmHM3E01e3GlcSDZeqLlfnO9lBhnSN02OJ41+3dGSxhw="
-},
-
+  },
   "frame": {
     "version": "1",
     "name": "CeloBank Agent",
@@ -15,8 +14,18 @@
     "splashImageUrl": "https://celobank-agent.vercel.app/logo.svg",
     "splashBackgroundColor": "#020408",
     "subtitle": "AI banking for the unbanked",
-    "description": "Send, swap earn on Celo. Supports 8 languages. Powered by AI.",
+    "description": "Send, swap and earn on Celo. Supports 8 languages. Powered by AI.",
+    "tagline": "AI banking for the unbanked",
     "primaryCategory": "finance",
-    "tags": ["celo", "defi", "banking", "africa", "stablecoin"]
+    "tags": ["celo", "defi", "banking", "africa", "stablecoin"],
+    "ogTitle": "CeloBank Agent",
+    "ogDescription": "Send, swap and earn on Celo. Supports 8 languages. Powered by AI.",
+    "ogImageUrl": "https://celobank-agent.vercel.app/logo.svg",
+    "heroImageUrl": "https://celobank-agent.vercel.app/logo.svg",
+    "screenshotUrls": [
+      "https://celobank-agent.vercel.app/screenshot1.png",
+      "https://celobank-agent.vercel.app/screenshot2.png"
+    ],
+    "castShareUrl": "https://celobank-agent.vercel.app"
   }
 }
