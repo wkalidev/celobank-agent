@@ -22,6 +22,7 @@
     "ogDescription": "Send, swap and earn on Celo. Supports 8 languages. Powered by AI.",
     "ogImageUrl": "https://celobank-agent.vercel.app/celobank_splash.svg",
     "heroImageUrl": "https://celobank-agent.vercel.app/celobank_splash.svg",
+    "webhookUrl": "https://celobank-agent-production.up.railway.app/webhook",
     "screenshotUrls": [
       "https://celobank-agent.vercel.app/screenshot1.png",
       "https://celobank-agent.vercel.app/screenshot2.png"
