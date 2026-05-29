@@ -3,10 +3,12 @@ import express from "express"
 import cors from "cors"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
+import { registerFarcasterBot } from "./bot/farcaster-bot.js"
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+registerFarcasterBot(app)
 
 // Adresse du wallet de l'agent
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
