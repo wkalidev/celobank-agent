@@ -4,8 +4,9 @@
 
 # CeloBank Agent
 
-### 🌍 The autonomous AI bank for the 1.4 billion unbanked
+### 🏗️ Open infrastructure for autonomous DeFi agents on Celo
 
+[![npm](https://img.shields.io/badge/npm-@celobank%2Fagent--sdk-CB3837?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@celobank/agent-sdk)
 [![Celo](https://img.shields.io/badge/Built%20on-Celo-35D07F?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiMzNUQwN0YiLz48L3N2Zz4=)](https://celo.org)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Deployed-FCFF52?style=for-the-badge)](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
 [![Self Agent](https://img.shields.io/badge/Self_Agent-Verified-6366f1?style=for-the-badge)](https://app.ai.self.xyz/agents)
@@ -13,9 +14,79 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-[Demo](https://celobank-agent.vercel.app) · [Features](#features) · [Quick Start](#quick-start) · [Architecture](#architecture)
+[Demo](https://celobank-agent.vercel.app) · [SDK Docs](#-sdk--celobankagent-sdk) · [Quick Start](#-quick-start) · [Architecture](#️-architecture)
 
 </div>
+
+---
+
+## 🏗️ What is CeloBank Agent?
+
+CeloBank Agent is **two things at once**:
+
+1. **An infrastructure SDK** — `@celobank/agent-sdk` is a published npm package that any developer can use to build autonomous DeFi agents on Celo. Portfolio reads, Mento V2 swaps, Aave V3 supply, native CELO transfers — all in one typed SDK.
+
+2. **A reference implementation** — A full autonomous AI bank built on top of that SDK, showing what's possible: natural language banking for the 1.4 billion unbanked, deployed on Celo Mainnet with sub-cent fees.
+
+> The SDK is the infrastructure. The app is the proof it works.
+
+---
+
+## 📦 SDK — `@celobank/agent-sdk`
+
+Any developer can install the SDK and build their own agent in minutes:
+
+```bash
+npm install @celobank/agent-sdk
+```
+
+```typescript
+import { CeloBankSDK } from "@celobank/agent-sdk"
+
+const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
+
+// Read portfolio
+const portfolio = await sdk.getPortfolio()
+
+// Send CELO
+const tx = await sdk.send({ to: "0xABC...", amount: "1.5" })
+
+// Swap via Mento V2
+const swap = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
+
+// Earn yield on Aave
+const supply = await sdk.supplyAave({ amount: "50" })
+
+// Get real-time prices
+const prices = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
+```
+
+**→ Full SDK documentation: [`packages/agent-sdk/README.md`](./packages/agent-sdk/README.md)**
+
+**→ npm package: [npmjs.com/package/@celobank/agent-sdk](https://www.npmjs.com/package/@celobank/agent-sdk)**
+
+### What the SDK provides
+
+| Method | Description |
+|--------|-------------|
+| `getPortfolio(params?)` | Native CELO + all ERC20 balances for any address |
+| `getPrices(params?)` | Real-time USD prices + 24h change via CoinGecko |
+| `send(params)` | Send native CELO to any address |
+| `swap(params)` | Swap CELO → stablecoin via Mento V2 |
+| `getAavePosition(params?)` | Read Aave V3 position (collateral, debt, health factor) |
+| `supplyAave(params)` | Deposit asset on Aave V3 to earn yield |
+
+### Who builds on this SDK?
+
+| Project type | How they use it |
+|---|---|
+| 🤖 AI agent apps | Tool-calling loop for DeFi actions |
+| 🛒 E-commerce | Accept CELO, auto-convert to cUSD |
+| 💸 Remittance apps | Send money for ~$0.001 fee |
+| 🏦 Savings bots | Auto-deposit surplus cUSD on Aave |
+| 📊 Portfolio trackers | Read multi-token balances + prices |
+
+**→ See real examples: [`packages/agent-sdk/examples/`](./packages/agent-sdk/examples/)**
 
 ---
 
@@ -74,8 +145,6 @@ CeloBank Agent is registered as a verified onchain AI agent via [Self Protocol](
 | Verification | ✅ ZK-verified onchain identity |
 | Privacy | Zero personal data exposed — cryptographic proof only |
 
-Every agent action is cryptographically signed — verifiable on-chain, no trust required.
-
 ---
 
 ## 📱 MiniPay Integration
@@ -100,14 +169,13 @@ User (any language, any device)
   Express API Server (Railway)
        ↓
   AI Agent (Groq — LLaMA 3.1-8b-instant)
-  ├── get_celo_price    → CoinGecko API
-  ├── get_balance       → Celo RPC (viem)
-  ├── get_portfolio     → Multi-token balances
-  ├── get_multi_price   → Live prices + 24h change
-  ├── send_celo         → Celo Mainnet tx
-  ├── swap_celo         → Mento V2 router
-  ├── get_aave_position → Aave V3 contract
-  └── save_cusd         → Aave supply
+  └── @celobank/agent-sdk ← any project can use this
+      ├── getPortfolio()    → Multi-token balances
+      ├── getPrices()       → CoinGecko API
+      ├── send()            → Celo Mainnet tx
+      ├── swap()            → Mento V2 router
+      ├── getAavePosition() → Aave V3 contract
+      └── supplyAave()      → Aave supply
        ↓
   Celo Mainnet (Chain ID: 42220)
   ├── ERC-8004 Registry: 0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
@@ -185,26 +253,16 @@ npm run dev
 
 ---
 
-## 🛠️ Tech Stack
-
-- **Blockchain**: Celo L2 (OP Stack) — **Mainnet**
-- **Smart Contract**: ERC-8004 Identity Registry (Solidity 0.8.25)
-- **AI**: Groq Cloud — LLaMA 3.1-8b-instant (ultra-fast inference)
-- **Agent Framework**: Custom tool-calling loop with fetch
-- **On-chain**: viem v2
-- **DeFi**: Aave V3, Mento V2
-- **Identity**: ERC-8004 + Self Protocol (ZK-verified)
-- **UI**: React + Vite
-- **API**: Express.js
-- **Deploy**: Vercel (UI) + Railway (API)
-- **Language**: TypeScript
-
----
-
 ## 📁 Project Structure
 
 ```
 celobank-agent/
+├── packages/
+│   └── agent-sdk/          # 📦 @celobank/agent-sdk — npm package
+│       ├── src/             # SDK source (CeloBankSDK, constants, ABIs, types)
+│       ├── examples/        # Integration examples for builders
+│       ├── dist/            # Compiled output
+│       └── README.md        # SDK documentation
 ├── contracts/
 │   └── CeloBankAgent.sol   # ERC-8004 Identity contract
 ├── scripts/
@@ -231,6 +289,23 @@ celobank-agent/
 
 ---
 
+## 🛠️ Tech Stack
+
+- **Blockchain**: Celo L2 (OP Stack) — **Mainnet**
+- **Smart Contract**: ERC-8004 Identity Registry (Solidity 0.8.25)
+- **AI**: Groq Cloud — LLaMA 3.1-8b-instant (ultra-fast inference)
+- **Agent Framework**: Custom tool-calling loop with fetch
+- **SDK**: `@celobank/agent-sdk` — published on npm
+- **On-chain**: viem v2
+- **DeFi**: Aave V3, Mento V2
+- **Identity**: ERC-8004 + Self Protocol (ZK-verified)
+- **UI**: React + Vite
+- **API**: Express.js
+- **Deploy**: Vercel (UI) + Railway (API)
+- **Language**: TypeScript
+
+---
+
 ## 🏆 Hackathon
 
 Built for the **Celo Onchain Agents Hackathon 2026** — May 22 to June 15, 2026.
@@ -240,12 +315,6 @@ Built for the **Celo Onchain Agents Hackathon 2026** — May 22 to June 15, 2026
 | 🥇 Track 1 — Best Agent on Celo | $2,500 |
 | 🥈 Track 2 — Most Onchain Transactions | $500 |
 | 🥉 Track 3 — Highest Rank on 8004scan | $500 |
-
-**Why CeloBank wins:**
-- Real transactions on Celo Mainnet — every chat message can trigger an on-chain tx
-- ERC-8004 registered + Self Agent ID verified — top-tier agent identity stack
-- MiniPay compatible — immediate access to 15M+ real users
-- Financial inclusion mission aligned with Celo's core values
 
 ---
 
@@ -262,5 +331,7 @@ MIT © 2026 [@wkalidev](https://github.com/wkalidev)
 ---
 
 <div align="center">
+
 **Built with ❤️ by [Wkalidev](https://github.com/wkalidev) for the unbanked · Powered by Celo Mainnet · Groq LLaMA 3.1 · ERC-8004 · Self Agent ID**
+
 </div>
