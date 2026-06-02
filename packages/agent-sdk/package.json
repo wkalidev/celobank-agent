@@ -1,6 +1,6 @@
 {
   "name": "@celobank/agent-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Infrastructure SDK for building autonomous DeFi agents on Celo",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -16,7 +16,15 @@
     "build": "tsc",
     "dev": "tsc --watch"
   },
-  "keywords": ["celo", "defi", "agent", "sdk", "aave", "mento", "blockchain"],
+  "keywords": [
+    "celo",
+    "defi",
+    "agent",
+    "sdk",
+    "aave",
+    "mento",
+    "blockchain"
+  ],
   "author": "wkalidev",
   "license": "MIT",
   "dependencies": {
@@ -27,7 +35,10 @@
     "typescript": "^5.3.0",
     "@types/node": "^20.0.0"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   }
