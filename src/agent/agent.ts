@@ -8,9 +8,9 @@ import {
   getMultiPriceTool,
 } from "../tools/defi.js"
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY!
-const MODEL          = "ministral-3:8b"
-const BASE_URL       = "https://ollama.com"
+const GROQ_API_KEY = process.env.GROQ_API_KEY!
+const MODEL        = "llama-3.1-8b-instant"
+const BASE_URL     = "https://api.groq.com/openai"
 
 const tools = {
   get_balance:       getBalanceTool,
@@ -23,17 +23,23 @@ const tools = {
   save_cusd:         saveCUSDTool,
 }
 
+// Tools whose result should be returned DIRECTLY without letting the LLM rephrase
+// (avoids hallucinated TX links, fake confirmations, etc.)
+const DIRECT_RETURN_TOOLS = new Set([
+  "swap_celo",
+  "save_cusd",
+  "send_celo",
+])
+
 const toolSchemas = [
   {
     type: "function",
     function: {
       name: "get_balance",
-      description: "Get native CELO balance of a wallet address",
+      description: "Get CELO balance of an address",
       parameters: {
         type: "object",
-        properties: {
-          address: { type: "string", description: "Wallet address 0x..." },
-        },
+        properties: { address: { type: "string" } },
         required: ["address"],
       },
     },
@@ -42,12 +48,12 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "send_celo",
-      description: "Send CELO to a wallet address",
+      description: "Send CELO to an address",
       parameters: {
         type: "object",
         properties: {
-          to:     { type: "string", description: "Recipient address 0x..." },
-          amount: { type: "string", description: "Amount in CELO, ex: 0.5" },
+          to:     { type: "string" },
+          amount: { type: "string" },
         },
         required: ["to", "amount"],
       },
@@ -57,8 +63,7 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_celo_price",
-      description: "Get current CELO price in USD",
-      // FIX: required:[] empêche Groq d'envoyer null comme arguments
+      description: "Get CELO price in USD",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -66,16 +71,10 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_portfolio",
-      description:
-        "Show full wallet portfolio: balances of CELO, cUSD, cEUR, cREAL, USDC, USDT for an address",
+      description: "Get token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT) for an address",
       parameters: {
         type: "object",
-        properties: {
-          address: {
-            type: "string",
-            description: "Wallet address 0x... (optional, uses default wallet if omitted)",
-          },
-        },
+        properties: { address: { type: "string" } },
         required: [],
       },
     },
@@ -84,17 +83,10 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_multi_price",
-      description:
-        "Get real-time USD prices with 24h change for multiple tokens: CELO, cUSD, cEUR, cREAL, USDC, USDT",
+      description: "Get USD prices for tokens: CELO, cUSD, cEUR, cREAL, USDC, USDT",
       parameters: {
         type: "object",
-        properties: {
-          tokens: {
-            type: "string",
-            description:
-              "Comma-separated token symbols, ex: 'CELO,cUSD,USDC'. Omit to get all prices.",
-          },
-        },
+        properties: { tokens: { type: "string" } },
         required: [],
       },
     },
@@ -103,13 +95,12 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "swap_celo",
-      description:
-        "Swap CELO for a stablecoin (cUSD, cEUR, cREAL) via Mento V2 on Celo Mainnet",
+      description: "Swap CELO to cUSD, cEUR or cREAL via Mento V2",
       parameters: {
         type: "object",
         properties: {
-          amount:   { type: "string", description: "Amount of CELO to swap, ex: 1" },
-          tokenOut: { type: "string", description: "Output token: cUSD, cEUR or cREAL" },
+          amount:   { type: "string" },
+          tokenOut: { type: "string", enum: ["cUSD", "cEUR", "cREAL"] },
         },
         required: ["amount", "tokenOut"],
       },
@@ -119,16 +110,10 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_aave_position",
-      description:
-        "Check DeFi position on Aave Celo Mainnet: collateral, debt, available borrow, health factor",
+      description: "Check Aave position: collateral, debt, health factor",
       parameters: {
         type: "object",
-        properties: {
-          address: {
-            type: "string",
-            description: "Wallet address 0x... (optional)",
-          },
-        },
+        properties: { address: { type: "string" } },
         required: [],
       },
     },
@@ -137,12 +122,10 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "save_cusd",
-      description: "Deposit cUSD on Aave to earn interest automatically",
+      description: "Deposit cUSD on Aave to earn yield",
       parameters: {
         type: "object",
-        properties: {
-          amount: { type: "string", description: "Amount in cUSD, ex: 10" },
-        },
+        properties: { amount: { type: "string" } },
         required: ["amount"],
       },
     },
@@ -154,39 +137,28 @@ async function groqChat(messages: any[]) {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, temperature: 0 }),
   })
   return res.json()
 }
 
+function truncateResult(result: string, maxChars = 400): string {
+  if (result.length <= maxChars) return result
+  return result.slice(0, maxChars) + "\n...(truncated)"
+}
+
 export async function runAgent(input: string): Promise<string> {
   const messages: any[] = [
     {
       role: "system",
-      content: `You are CeloBank Agent — an autonomous AI bank for the unbanked in Africa, Asia and Latin America.
-
-You have access to these tools on Celo Mainnet:
-- get_balance       : native CELO balance of any address
-- send_celo         : send CELO to any address
-- get_celo_price    : current CELO price in USD
-- get_portfolio     : ALL token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT) at once
-- get_multi_price   : real-time prices + 24h change for all tokens
-- swap_celo         : swap CELO → cUSD / cEUR / cREAL via Mento V2
-- get_aave_position : DeFi position on Aave (collateral, debt, health factor)
-- save_cusd         : deposit cUSD on Aave to earn yield
-
-RULES:
-1. ALWAYS call the appropriate tool — never invent data or prices.
-2. Detect the user's language and ALWAYS respond in that same language.
-3. When the user asks about balance or portfolio, use get_portfolio.
-4. When the user asks about prices of multiple tokens, use get_multi_price.
-5. When the user says swap/exchange/convert CELO, use swap_celo.
-6. Be warm, simple, and avoid technical jargon.`,
+      content: "You are CeloBank, an AI bank on Celo Mainnet. Always use tools, never invent data. Reply in the user's language. Be warm and concise. Call each tool ONCE only.",
     },
     { role: "user", content: input },
   ]
+
+  const calledToolsAcrossTurns = new Set<string>()
 
   for (let i = 0; i < 5; i++) {
     const data = await groqChat(messages)
@@ -197,27 +169,49 @@ RULES:
       return "Erreur de réponse"
     }
 
-    if (msg.tool_calls?.length > 0) {
-      messages.push(msg)
-      for (const call of msg.tool_calls) {
-        const toolName = call.function.name as keyof typeof tools
-        // FIX: arguments peut être null ou "null" — on force {} dans les deux cas
-        const rawArgs = call.function.arguments
-        const args = (rawArgs && rawArgs !== "null")
-          ? (JSON.parse(rawArgs) ?? {})
-          : {}
-        console.log(`  🔧 Tool: ${toolName}`, args)
-        const result = await (tools[toolName] as any).invoke(args)
-        messages.push({
-          role:         "tool",
-          tool_call_id: call.id,
-          content:      String(result),
-        })
-      }
-      continue
+    if (!msg.tool_calls?.length) {
+      return msg.content ?? "Erreur de réponse"
     }
 
-    return msg.content
+    messages.push(msg)
+
+    const seenCallIds = new Set<string>()
+
+    for (const call of msg.tool_calls) {
+      const toolName = call.function.name as keyof typeof tools
+
+      if (seenCallIds.has(call.id)) {
+        messages.push({ role: "tool", tool_call_id: call.id, content: "Duplicate call skipped." })
+        continue
+      }
+      seenCallIds.add(call.id)
+
+      if (calledToolsAcrossTurns.has(toolName)) {
+        console.log(`  ⚠️ Tool ${toolName} already called in a previous turn, skip`)
+        messages.push({ role: "tool", tool_call_id: call.id, content: "Already executed." })
+        continue
+      }
+      calledToolsAcrossTurns.add(toolName)
+
+      const rawArgs = call.function.arguments
+      const args    = (rawArgs && rawArgs !== "null") ? (JSON.parse(rawArgs) ?? {}) : {}
+      console.log(`  🔧 Tool: ${toolName}`, args)
+
+      const result   = await (tools[toolName] as any).invoke(args)
+      const resultStr = String(result)
+
+      // For action tools (swap, deposit, send): return the tool result directly
+      // without letting the LLM rephrase it (avoids hallucinated TX links)
+      if (DIRECT_RETURN_TOOLS.has(toolName)) {
+        return resultStr
+      }
+
+      messages.push({
+        role:         "tool",
+        tool_call_id: call.id,
+        content:      truncateResult(resultStr),
+      })
+    }
   }
 
   return "Limite de tours atteinte"

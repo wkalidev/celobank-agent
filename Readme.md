@@ -111,8 +111,8 @@ Built on **Celo Mainnet** with sub-cent transaction fees, powered by **ERC-8004*
 | 💬 **Natural Language** | Chat in French, English, Spanish, Arabic, Swahili, Italian, Portuguese, Chinese |
 | 💸 **Send Money** | Transfer CELO instantly to anyone, anywhere |
 | 📊 **Real-time Prices** | Live CELO + multi-token prices from CoinGecko |
-| 🏦 **DeFi Savings** | Deposit cUSD on Aave to earn interest automatically |
-| 🔄 **Token Swap** | Exchange CELO ↔ cUSD / cEUR / cREAL via Mento V2 |
+| 🏦 **DeFi Savings** | Deposit cUSD on Aave V3 to earn interest automatically |
+| 🔄 **Token Swap** | Exchange CELO ↔ cUSD / cEUR / cREAL via Mento V2 (on-chain verified) |
 | 📈 **Portfolio** | Full multi-token balances and DeFi positions |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity — deployed on Celo Mainnet |
 | 🔐 **Self Agent ID** | Privacy-first ZK-verified onchain identity via Self Protocol |
@@ -170,16 +170,17 @@ User (any language, any device)
        ↓
   AI Agent (Groq — LLaMA 3.1-8b-instant)
   └── @celobank/agent-sdk ← any project can use this
-      ├── getPortfolio()    → Multi-token balances
+      ├── getPortfolio()    → Multi-token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT)
       ├── getPrices()       → CoinGecko API
       ├── send()            → Celo Mainnet tx
-      ├── swap()            → Mento V2 router
+      ├── swap()            → Mento V2 router (approve → waitForReceipt → swapIn)
       ├── getAavePosition() → Aave V3 contract
-      └── supplyAave()      → Aave supply
+      └── supplyAave()      → Aave V3 supply (approve → waitForReceipt → supply)
        ↓
   Celo Mainnet (Chain ID: 42220)
-  ├── ERC-8004 Registry: 0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
-  └── Self Agent ID: ZK-verified onchain identity
+  ├── Mento V2 Broker:    0x777A8255cA72412f0d706dc03C9D1987306B4CaD
+  ├── Aave V3 Pool:       0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402
+  └── ERC-8004 Registry:  0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1
 ```
 
 ---
@@ -189,7 +190,7 @@ User (any language, any device)
 ### Prerequisites
 - Node.js v18+
 - Git
-- [Groq API key](https://console.groq.com) (free)
+- [Groq API key](https://console.groq.com) (free — use Dev Tier for higher TPM limits)
 
 ### Installation
 
@@ -230,19 +231,19 @@ npm run dev
 
 ```
 👤 "What is the current CELO price?"
-🤖 "The current CELO price is $0.092 USD."
+🤖 "CELO: $0.072 (-1.05% 24h) | cUSD: $0.999 | USDC: $0.999"
 
 👤 "Check my balance"
-🤖 "Your address 0xDEAc... has 207.26 CELO ($19.07 USD)."
+🤖 "Wallet 0xDEAcDe... | CELO: 207.2600 (native) | cUSD: 0.0312 | ..."
 
 👤 "Send 0.01 CELO to 0xABCD..."
-🤖 "✅ Transfer successful! TX: 0x9489dc51..."
+🤖 "✅ Sent 0.01 CELO | TX: https://celoscan.io/tx/0x..."
+
+👤 "Swap 0.02 CELO to cUSD"
+🤖 "Swap done: 0.02 CELO → cUSD | TX: https://celoscan.io/tx/0x31a4ee..."
 
 👤 "Deposit 10 cUSD on Aave"
-🤖 "✅ 10 cUSD deposited on Aave. Earning interest automatically 💰"
-
-👤 "Swap 1 CELO to cUSD"
-🤖 "✅ Swap successful! 1 CELO → cUSD via Mento V2"
+🤖 "Deposited 10 cUSD on Aave. TX: https://celoscan.io/tx/0x..."
 ```
 
 ---
@@ -273,7 +274,7 @@ celobank-agent/
 │   │   └── agent.ts        # AI agent — Groq LLaMA 3.1 + tool-calling loop
 │   ├── tools/
 │   │   ├── celo.ts         # On-chain tools (balance, send, price)
-│   │   └── defi.ts         # DeFi tools (Aave, Mento swap)
+│   │   └── defi.ts         # DeFi tools (Mento V2 swap, Aave V3 supply/position)
 │   ├── ui/
 │   │   ├── App.tsx         # React chat interface + MiniPay detection
 │   │   ├── main.tsx        # Entry point
@@ -294,10 +295,10 @@ celobank-agent/
 - **Blockchain**: Celo L2 (OP Stack) — **Mainnet**
 - **Smart Contract**: ERC-8004 Identity Registry (Solidity 0.8.25)
 - **AI**: Groq Cloud — LLaMA 3.1-8b-instant (ultra-fast inference)
-- **Agent Framework**: Custom tool-calling loop with fetch
+- **Agent Framework**: Custom tool-calling loop with direct return for action tools
 - **SDK**: `@celobank/agent-sdk` — published on npm
 - **On-chain**: viem v2
-- **DeFi**: Aave V3, Mento V2
+- **DeFi**: Aave V3 (`0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402`), Mento V2 (`0x777A8255cA72412f0d706dc03C9D1987306B4CaD`)
 - **Identity**: ERC-8004 + Self Protocol (ZK-verified)
 - **UI**: React + Vite
 - **API**: Express.js
@@ -308,13 +309,7 @@ celobank-agent/
 
 ## 🏆 Hackathon
 
-Built for the **Celo Onchain Agents Hackathon 2026** — May 22 to June 15, 2026.
-
-| Track | Prize |
-|-------|-------|
-| 🥇 Track 1 — Best Agent on Celo | $2,500 |
-| 🥈 Track 2 — Most Onchain Transactions | $500 |
-| 🥉 Track 3 — Highest Rank on 8004scan | $500 |
+Built for the **Celo Onchain Agents Hackathon 2026**.
 
 ---
 

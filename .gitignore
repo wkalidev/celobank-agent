@@ -29,3 +29,5 @@
 
 # Snapshot cheatcodes output
 /snapshots
+src/generateKeys.ts
+src/signChallenge.ts

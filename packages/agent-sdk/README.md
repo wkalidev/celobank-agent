@@ -16,9 +16,9 @@
 
 Building a DeFi agent on Celo from scratch means:
 - Wiring up viem clients, ABIs, and chain configs
-- Finding the right Mento V2 exchange IDs (undocumented)
+- Finding the right Mento V2 exchange IDs (loaded dynamically from BiPoolManager)
 - Handling Aave V3 supply/withdraw flows
-- Managing approve→execute patterns safely
+- Managing approve → waitForReceipt → execute patterns safely
 
 **This SDK handles all of that.** You import, you call, it works.
 
@@ -73,15 +73,13 @@ const portfolio = await sdk.getPortfolio({ address: "0xABC..." })
 // Returns:
 {
   address: "0xDEAc...",
-  native: "207.340000",       // CELO natif
+  native: "207.340000",       // native CELO
   tokens: {
-    cUSD:   "45.200000",
-    cEUR:   "0.000000",
-    cREAL:  "0.000000",
-    USDC:   "12.500000",
-    USDT:   "0.000000",
-    STCELO: "0.000000",
-    "G$":   "0.000000",
+    cUSD:  "45.200000",
+    cEUR:  "0.000000",
+    cREAL: "0.000000",
+    USDC:  "12.500000",
+    USDT:  "0.000000",
   }
 }
 ```
@@ -99,8 +97,8 @@ const prices = await sdk.getPrices({ tokens: ["CELO", "cUSD", "USDC"] })
 
 // Returns:
 [
-  { symbol: "CELO", priceUsd: 0.092, change24h: -1.23 },
-  { symbol: "cUSD", priceUsd: 1.001, change24h: 0.01  },
+  { symbol: "CELO", priceUsd: 0.072, change24h: -1.05 },
+  { symbol: "cUSD", priceUsd: 0.999, change24h:  0.00 },
 ]
 ```
 
@@ -130,12 +128,16 @@ const result = await sdk.send({
 
 ### `swap(params)`
 
-Swap CELO for a stablecoin via **Mento V2** (no slippage on stable pairs).
+Swap CELO for a stablecoin via **Mento V2**.
+
+Exchange IDs are loaded dynamically from the BiPoolManager contract — no hardcoded values, always up to date.
+
+The swap flow is: `approve → waitForTransactionReceipt → swapIn` to avoid nonce collisions.
 
 ```typescript
 const result = await sdk.swap({
   amount: "10",        // CELO to swap
-  tokenOut: "cUSD",    // "cUSD" | "cEUR" | "cREAL" | "USDC" | "USDT"
+  tokenOut: "cUSD",    // "cUSD" | "cEUR" | "cREAL" | "KESm" | "NGNm" | "GHSm" | "XOFm" | "ZARm"
 })
 
 // Returns:
@@ -175,6 +177,8 @@ const position = await sdk.getAavePosition({ address: "0xABC..." })
 
 Deposit an asset on Aave V3 to earn yield automatically.
 
+The supply flow is: `approve → waitForTransactionReceipt → supply` to avoid nonce collisions.
+
 ```typescript
 const result = await sdk.supplyAave({
   amount: "50",      // amount to deposit
@@ -208,9 +212,9 @@ const result = await sdk.supplyAave({
 All Celo Mainnet token addresses are exported from the SDK:
 
 ```typescript
-import { TOKENS, MENTO_EXCHANGE_IDS, AAVE_POOL } from "@celobank/agent-sdk"
+import { TOKENS, AAVE_POOL, BROKER, BI_POOL_MANAGER } from "@celobank/agent-sdk"
 
-console.log(TOKENS.cUSD.address)   // 0x765DE8...
+console.log(TOKENS.cUSD.address)   // 0x765DE816845861e75A25fCA122bb6898B8B1282a
 console.log(TOKENS.USDC.decimals)  // 6
 ```
 
@@ -220,25 +224,27 @@ console.log(TOKENS.USDC.decimals)  // 6
 
 | Symbol | Address | Decimals |
 |--------|---------|----------|
-| CELO   | `0x471EcE...` | 18 |
-| cUSD   | `0x765DE8...` | 18 |
-| cEUR   | `0xD8763C...` | 18 |
-| cREAL  | `0xe8537a...` | 18 |
-| USDC   | `0xcebA93...` | 6  |
-| USDT   | `0x48065f...` | 6  |
+| CELO   | `0x471EcE3750Da237f93B8E339c536989b8978a438` | 18 |
+| cUSD   | `0x765DE816845861e75A25fCA122bb6898B8B1282a` | 18 |
+| cEUR   | `0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73` | 18 |
+| cREAL  | `0xe8537a3d056DA446677B9E9d6c5dB704EaAb4787` | 18 |
+| USDC   | `0xcebA9300f2b948710d2653dD7B07f33A8B32118C` | 6  |
+| USDT   | `0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e` | 6  |
+
+Extra swap tokens (Mento stablecoins): `KESm`, `NGNm`, `GHSm`, `XOFm`, `ZARm`, `GBPm`
 
 ---
 
 ## On-Chain Infrastructure
 
-This SDK wraps verified mainnet contracts:
+This SDK wraps verified Celo Mainnet contracts:
 
 | Protocol | Contract | Address |
 |----------|----------|---------|
-| Mento V2 Broker | Swap router | `0x777A82...` |
-| Mento BiPool Manager | Exchange provider | `0x22d9db...` |
-| Aave V3 Pool | Lending/borrowing | `0x3E59A3...` |
-| ERC-8004 Registry | Agent identity | `0x4ebef6...` |
+| Mento V2 Broker | Swap router | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` |
+| Mento BiPool Manager | Exchange provider | `0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901` |
+| Aave V3 Pool | Lending/borrowing | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` |
+| ERC-8004 Registry | Agent identity | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` |
 
 ---
 
@@ -247,7 +253,7 @@ This SDK wraps verified mainnet contracts:
 - **Blockchain**: Celo L2 (OP Stack), Mainnet only
 - **On-chain**: viem v2
 - **Language**: TypeScript (fully typed)
-- **DeFi**: Mento V2, Aave V3
+- **DeFi**: Mento V2 (dynamic exchange ID lookup), Aave V3
 - **Identity**: ERC-8004
 
 ---
