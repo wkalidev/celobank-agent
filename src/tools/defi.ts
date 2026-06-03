@@ -170,7 +170,7 @@ const AAVE_POOL_ABI = [
   },
 ] as const
 
-const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6" as `0x${string}`
+const AAVE_POOL = "0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
 
 // ─── Tool 1 : Portefeuille ────────────────────────────────────────────────────
 export const getPortfolioTool = tool(
@@ -324,12 +324,13 @@ export const getAavePositionTool = tool(
       }) as [bigint, bigint, bigint, bigint, bigint, bigint]
 
       const [collateral, debt, available, , , healthFactor] = data
+      const hfDisplay = healthFactor > BigInt("1000000000000000000000") ? "∞" : parseFloat(formatUnits(healthFactor, 18)).toFixed(2)
       return [
         `Aave position:`,
         `Collateral: $${formatUnits(collateral, 8)}`,
         `Debt: $${formatUnits(debt, 8)}`,
         `Available: $${formatUnits(available, 8)}`,
-        `Health: ${formatUnits(healthFactor, 18)}`,
+        `Health: ${hfDisplay}`,
       ].join(" | ")
     } catch (e) {
       return `Aave error: ${e}`

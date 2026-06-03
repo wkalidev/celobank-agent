@@ -29,6 +29,11 @@ const DIRECT_RETURN_TOOLS = new Set([
   "swap_celo",
   "save_cusd",
   "send_celo",
+  "get_celo_price",
+  "get_multi_price",
+  "get_portfolio",
+  "get_balance",
+  "get_aave_position",
 ])
 
 const toolSchemas = [

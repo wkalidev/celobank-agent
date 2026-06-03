@@ -203,7 +203,8 @@ export default function App() {
     const langLabel = LANGUAGES.find(l => l.code === selectedLang)?.label
     const enrichedMsg = selectedLang ? `[Respond only in ${langLabel}] ${msg}` : msg
     try {
-      const res = await fetch("https://celobank-agent-production.up.railway.app/chat", {
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+      const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }),
