@@ -23,8 +23,6 @@ const tools = {
   save_cusd:         saveCUSDTool,
 }
 
-// Tools whose result should be returned DIRECTLY without letting the LLM rephrase
-// (avoids hallucinated TX links, fake confirmations, etc.)
 const DIRECT_RETURN_TOOLS = new Set([
   "swap_celo",
   "save_cusd",
@@ -158,7 +156,13 @@ export async function runAgent(input: string): Promise<string> {
   const messages: any[] = [
     {
       role: "system",
-      content: "You are CeloBank, an AI bank on Celo Mainnet. Always use tools, never invent data. Reply in the user's language. Be warm and concise. Call each tool ONCE only.",
+      content: `You are CeloBank, an AI bank on Celo Mainnet. Always use tools, never invent data. Reply in the user's language. Be warm and concise. Call each tool ONCE only.
+
+IMPORTANT RULES:
+- If the user wants to deposit on Aave but does NOT specify an amount, ask them how much they want to deposit BEFORE calling save_cusd.
+- If the user wants to send CELO but does NOT specify an amount or recipient, ask for the missing info BEFORE calling send_celo.
+- If the user wants to swap but does NOT specify an amount, ask how much BEFORE calling swap_celo.
+- Never assume or invent amounts. Always confirm with the user first.`,
     },
     { role: "user", content: input },
   ]
@@ -202,11 +206,9 @@ export async function runAgent(input: string): Promise<string> {
       const args    = (rawArgs && rawArgs !== "null") ? (JSON.parse(rawArgs) ?? {}) : {}
       console.log(`  🔧 Tool: ${toolName}`, args)
 
-      const result   = await (tools[toolName] as any).invoke(args)
+      const result    = await (tools[toolName] as any).invoke(args)
       const resultStr = String(result)
 
-      // For action tools (swap, deposit, send): return the tool result directly
-      // without letting the LLM rephrase it (avoids hallucinated TX links)
       if (DIRECT_RETURN_TOOLS.has(toolName)) {
         return resultStr
       }
