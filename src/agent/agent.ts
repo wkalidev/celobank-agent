@@ -9,7 +9,7 @@ import {
 } from "../tools/defi.js"
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!
-const MODEL        = "llama-3.1-8b-instant"
+const MODEL        = "llama-3.3-70b-versatile"
 const BASE_URL     = "https://api.groq.com/openai"
 
 const tools = {

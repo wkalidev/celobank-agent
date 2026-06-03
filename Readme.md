@@ -168,7 +168,7 @@ User (any language, any device)
        ↓
   Express API Server (Railway)
        ↓
-  AI Agent (Groq — LLaMA 3.1-8b-instant)
+  AI Agent (Groq —llama-3.3-70b-versatile)
   └── @celobank/agent-sdk ← any project can use this
       ├── getPortfolio()    → Multi-token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT)
       ├── getPrices()       → CoinGecko API
