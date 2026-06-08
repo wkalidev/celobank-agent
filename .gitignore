@@ -31,3 +31,4 @@
 /snapshots
 src/generateKeys.ts
 src/signChallenge.ts
+src/ui/dist/
