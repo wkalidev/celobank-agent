@@ -3,6 +3,7 @@ import express from "express"
 import cors from "cors"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
+import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
 
 const app = express()
 app.use(cors())
@@ -31,7 +32,7 @@ const langInstructions: Record<string, string> = {
   english: "Respond in English.",
 }
 
-// ─── Swagger UI (inline, zero dependency) ────────────────────────────────────
+// ─── Swagger UI ───────────────────────────────────────────────────────────────
 const swaggerHTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -39,10 +40,7 @@ const swaggerHTML = `<!DOCTYPE html>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-  <style>
-    body { margin: 0; padding: 0; }
-    .topbar { display: none; }
-  </style>
+  <style>body { margin: 0; padding: 0; } .topbar { display: none; }</style>
 </head>
 <body>
   <div id="swagger-ui"></div>
@@ -64,7 +62,7 @@ const openApiSpec = {
   openapi: "3.0.0",
   info: {
     title: "CeloBank Agent API",
-    version: "1.0.0",
+    version: "2.0.0",
     description: `## Open infrastructure for autonomous DeFi agents on Celo
 
 This API exposes the \`@celobank/agent-sdk\` as a REST interface.
@@ -73,11 +71,12 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
 **npm SDK**: \`npm install @celobank/agent-sdk\`
 **GitHub**: https://github.com/wkalidev/celobank-agent
 **Network**: Celo Mainnet (Chain ID: 42220)
+
+## Non-Custodial Mode (v2)
+Use \`POST /api/v1/prepare\` to get unsigned transactions that the user signs with their own wallet.
+This is the recommended approach — the agent never holds user funds.
     `,
-    contact: {
-      name: "wkalidev",
-      url: "https://github.com/wkalidev/celobank-agent",
-    },
+    contact: { name: "wkalidev", url: "https://github.com/wkalidev/celobank-agent" },
     license: { name: "MIT" },
   },
   servers: [
@@ -86,6 +85,7 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
   ],
   tags: [
     { name: "Agent",     description: "Natural language AI agent" },
+    { name: "Prepare",   description: "Non-custodial transaction preparation" },
     { name: "Wallet",    description: "Portfolio & balance reads" },
     { name: "Prices",    description: "Real-time token prices" },
     { name: "DeFi",      description: "Aave V3 positions" },
@@ -96,7 +96,7 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
       post: {
         tags: ["Agent"],
         summary: "Send a message to the AI agent",
-        description: "The agent understands natural language in 8 languages and executes DeFi actions on Celo Mainnet autonomously.",
+        description: "The agent understands natural language in 8 languages and executes DeFi actions on Celo Mainnet.",
         requestBody: {
           required: true,
           content: {
@@ -106,7 +106,7 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
                 required: ["message"],
                 properties: {
                   message:     { type: "string", example: "What is the current CELO price?" },
-                  userAddress: { type: "string", example: "0xDEAc8D2b8F875a9E3cFC13E9d4d9e5e3e3e3e3e3", description: "User wallet address (optional)" },
+                  userAddress: { type: "string", example: "0xDEAc...", description: "User wallet address (optional)" },
                 },
               },
             },
@@ -120,15 +120,75 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
                 schema: {
                   type: "object",
                   properties: {
-                    response: { type: "string", example: "The current CELO price is $0.092 USD 📈 (+1.2% 24h)" },
-                    language: { type: "string", example: "english" },
+                    response: { type: "string" },
+                    language: { type: "string" },
                   },
                 },
               },
             },
           },
-          400: { description: "Missing message field" },
-          500: { description: "Agent error" },
+        },
+      },
+    },
+    "/api/v1/prepare": {
+      post: {
+        tags: ["Prepare"],
+        summary: "Prepare unsigned transactions (non-custodial)",
+        description: `Prepares DeFi transactions without signing them.
+Returns calldata that the frontend submits via the user's own wallet (wagmi/RainbowKit/MiniPay).
+The agent never holds user funds in this mode.
+
+**Supported actions**: swap, supply_aave, send, stake`,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["action", "userAddress", "params"],
+                properties: {
+                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake"], example: "swap" },
+                  userAddress: { type: "string", example: "0xDEAc..." },
+                  params: {
+                    type: "object",
+                    description: "Action-specific parameters",
+                    example: { amount: "10", tokenOut: "cUSD" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Unsigned transactions ready to sign",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success:      { type: "boolean" },
+                    action:       { type: "string" },
+                    userAddress:  { type: "string" },
+                    transactions: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          to:          { type: "string" },
+                          data:        { type: "string" },
+                          value:       { type: "string" },
+                          chainId:     { type: "number" },
+                          description: { type: "string" },
+                        },
+                      },
+                    },
+                    summary: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -136,143 +196,31 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
       get: {
         tags: ["Wallet"],
         summary: "Get full wallet portfolio",
-        description: "Returns native CELO + all ERC20 token balances (cUSD, cEUR, cREAL, USDC, USDT, stCELO, G$) for any address on Celo Mainnet.",
-        parameters: [
-          {
-            name: "address",
-            in: "path",
-            required: true,
-            schema: { type: "string" },
-            example: "0xDEAc8D2b8F875a9E3cFC13E9d4d9e5e3e3e3e3e3",
-            description: "Celo wallet address",
-          },
-        ],
-        responses: {
-          200: {
-            description: "Portfolio balances",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    address: { type: "string" },
-                    native:  { type: "string", description: "CELO native balance" },
-                    tokens: {
-                      type: "object",
-                      example: { cUSD: "45.200000", cEUR: "0.000000", USDC: "12.500000" },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          400: { description: "Invalid address" },
-        },
+        parameters: [{ name: "address", in: "path", required: true, schema: { type: "string" } }],
+        responses: { 200: { description: "Portfolio balances" } },
       },
     },
     "/api/v1/prices": {
       get: {
         tags: ["Prices"],
         summary: "Get real-time token prices",
-        description: "Returns USD prices + 24h change for Celo ecosystem tokens via CoinGecko.",
-        parameters: [
-          {
-            name: "tokens",
-            in: "query",
-            required: false,
-            schema: { type: "string" },
-            example: "CELO,cUSD,USDC",
-            description: "Comma-separated token symbols. Omit for all tokens.",
-          },
-        ],
-        responses: {
-          200: {
-            description: "Token prices",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    prices: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          symbol:    { type: "string", example: "CELO" },
-                          priceUsd:  { type: "number", example: 0.092 },
-                          change24h: { type: "number", example: 1.23 },
-                        },
-                      },
-                    },
-                    updatedAt: { type: "string", format: "date-time" },
-                  },
-                },
-              },
-            },
-          },
-        },
+        parameters: [{ name: "tokens", in: "query", schema: { type: "string" }, example: "CELO,cUSD,USDC" }],
+        responses: { 200: { description: "Token prices with 24h change" } },
       },
     },
     "/api/v1/aave/{address}": {
       get: {
         tags: ["DeFi"],
         summary: "Get Aave V3 position",
-        description: "Returns collateral, debt, available borrows, and health factor for an address on Aave V3 Celo.",
-        parameters: [
-          {
-            name: "address",
-            in: "path",
-            required: true,
-            schema: { type: "string" },
-            example: "0xDEAc8D2b8F875a9E3cFC13E9d4d9e5e3e3e3e3e3",
-          },
-        ],
-        responses: {
-          200: {
-            description: "Aave position",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    address:             { type: "string" },
-                    totalCollateralUsd:  { type: "string", example: "102.45" },
-                    totalDebtUsd:        { type: "string", example: "0.00" },
-                    availableBorrowsUsd: { type: "string", example: "71.71" },
-                    healthFactor:        { type: "string", example: "∞" },
-                  },
-                },
-              },
-            },
-          },
-        },
+        parameters: [{ name: "address", in: "path", required: true, schema: { type: "string" } }],
+        responses: { 200: { description: "Aave position data" } },
       },
     },
     "/health": {
       get: {
         tags: ["System"],
         summary: "Health check",
-        description: "Returns API status, agent wallet address, and network info.",
-        responses: {
-          200: {
-            description: "API is healthy",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    status:  { type: "string", example: "ok" },
-                    agent:   { type: "string", example: "CeloBank Agent API v1.0.0" },
-                    wallet:  { type: "string", example: "0xDEAc..." },
-                    network: { type: "string", example: "Celo Mainnet" },
-                    sdk:     { type: "string", example: "@celobank/agent-sdk@1.0.0" },
-                    uptime:  { type: "number", example: 3600 },
-                  },
-                },
-              },
-            },
-          },
-        },
+        responses: { 200: { description: "API is healthy" } },
       },
     },
   },
@@ -280,20 +228,19 @@ Any developer can call these endpoints to integrate DeFi capabilities on Celo in
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-// Documentation Swagger
-app.get("/", (_, res) => res.send(swaggerHTML))
-app.get("/docs", (_, res) => res.send(swaggerHTML))
+app.get("/",              (_, res) => res.send(swaggerHTML))
+app.get("/docs",          (_, res) => res.send(swaggerHTML))
 app.get("/api/v1/openapi.json", (_, res) => res.json(openApiSpec))
 
-// POST /api/v1/chat — Agent IA
+// ─── POST /api/v1/chat — Agent IA ─────────────────────────────────────────────
 app.post("/api/v1/chat", async (req, res) => {
   const { message, userAddress } = req.body
   if (!message) return res.status(400).json({ error: "message is required" })
 
   try {
-    const lang = detectLanguage(message)
-    const langHint = langInstructions[lang]
-    const walletAddress = userAddress || AGENT_ADDRESS
+    const lang            = detectLanguage(message)
+    const langHint        = langInstructions[lang]
+    const walletAddress   = userAddress || AGENT_ADDRESS
     const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
 
     console.log(`👤 [${lang}] [${walletAddress.slice(0, 8)}...]: ${message}`)
@@ -306,49 +253,92 @@ app.post("/api/v1/chat", async (req, res) => {
   }
 })
 
-// Rétrocompatibilité — ancien endpoint /chat
+// Rétrocompatibilité
 app.post("/chat", async (req, res) => {
   const { message, userAddress } = req.body
   if (!message) return res.status(400).json({ error: "Message requis" })
 
   try {
-    const lang = detectLanguage(message)
-    const langHint = langInstructions[lang]
-    const walletAddress = userAddress || AGENT_ADDRESS
+    const lang            = detectLanguage(message)
+    const langHint        = langInstructions[lang]
+    const walletAddress   = userAddress || AGENT_ADDRESS
     const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
-    const response = await runAgent(enrichedMessage)
+    const response        = await runAgent(enrichedMessage)
     res.json({ response })
   } catch (e: any) {
     res.status(500).json({ error: e.message })
   }
 })
 
-// GET /api/v1/portfolio/:address
+// ─── POST /api/v1/prepare — Non-custodial TX preparation ──────────────────────
+app.post("/api/v1/prepare", async (req, res) => {
+  const { action, userAddress, params } = req.body
+
+  if (!userAddress) {
+    return res.status(400).json({ error: "userAddress is required" })
+  }
+  if (!action) {
+    return res.status(400).json({ error: "action is required" })
+  }
+  if (!params) {
+    return res.status(400).json({ error: "params is required" })
+  }
+
+  console.log(`🔧 [prepare] action=${action} user=${userAddress.slice(0, 8)}...`)
+
+  try {
+    let result
+
+    switch (action) {
+      case "swap":
+        result = await prepareSwap(userAddress, params.amount, params.tokenOut)
+        break
+
+      case "supply_aave":
+      case "save":
+        result = await prepareSupplyAave(userAddress, params.amount, params.asset ?? "cUSD")
+        break
+
+      case "send":
+        result = await prepareSend(userAddress, params.to, params.amount)
+        break
+
+      case "stake":
+        result = await prepareStake(userAddress, params.amount)
+        break
+
+      default:
+        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake` })
+    }
+
+    console.log(`✅ [prepare] ${action} prepared for ${userAddress.slice(0, 8)}... — ${result.transactions.length} TX(s)`)
+    res.json(result)
+  } catch (e: any) {
+    console.error(`❌ [prepare] error:`, e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── GET /api/v1/portfolio/:address ──────────────────────────────────────────
 app.get("/api/v1/portfolio/:address", async (req, res) => {
   const { address } = req.params
-
   if (!address.startsWith("0x") || address.length !== 42) {
     return res.status(400).json({ error: "Invalid Celo address" })
   }
 
   try {
-    // On passe par l'agent avec un message structuré
     const result = await runAgent(
       `Respond ONLY with a raw JSON object (no markdown, no explanation) with this exact shape:
       { "address": "...", "native": "...", "tokens": { "cUSD": "...", "cEUR": "...", "cREAL": "...", "USDC": "...", "USDT": "..." } }
       Get the portfolio for address ${address}.`
     )
-    try {
-      res.json(JSON.parse(result))
-    } catch {
-      res.json({ address, raw: result })
-    }
+    try { res.json(JSON.parse(result)) } catch { res.json({ address, raw: result }) }
   } catch (e: any) {
     res.status(500).json({ error: e.message })
   }
 })
 
-// GET /api/v1/prices
+// ─── GET /api/v1/prices ───────────────────────────────────────────────────────
 app.get("/api/v1/prices", async (req, res) => {
   const tokens = req.query.tokens as string | undefined
 
@@ -357,30 +347,18 @@ app.get("/api/v1/prices", async (req, res) => {
       ? tokens.toUpperCase().split(",").map(t => t.trim())
       : ["CELO", "cUSD", "cEUR", "cREAL", "USDC", "USDT"]
 
-    const ids = tokenList.map(t => {
-      const map: Record<string, string> = {
-        CELO: "celo", cUSD: "celo-dollar", cEUR: "celo-euro",
-        cREAL: "celo-brazilian-real", USDC: "usd-coin", USDT: "tether",
-      }
-      return map[t] ?? t.toLowerCase()
-    }).join(",")
+    const cgMap: Record<string, string> = {
+      CELO: "celo", CUSD: "celo-dollar", CEUR: "celo-euro",
+      CREAL: "celo-brazilian-real", USDC: "usd-coin", USDT: "tether",
+    }
+    const ids = tokenList.map(t => cgMap[t.toUpperCase()] ?? t.toLowerCase()).join(",")
 
-    const cgRes = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
-    )
-    const data = await cgRes.json() as Record<string, { usd?: number; usd_24h_change?: number }>
+    const cgRes  = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`)
+    const data   = await cgRes.json() as Record<string, { usd?: number; usd_24h_change?: number }>
 
     const prices = tokenList.map(symbol => {
-      const map: Record<string, string> = {
-        CELO: "celo", cUSD: "celo-dollar", cEUR: "celo-euro",
-        cREAL: "celo-brazilian-real", USDC: "usd-coin", USDT: "tether",
-      }
-      const id = map[symbol] ?? symbol.toLowerCase()
-      return {
-        symbol,
-        priceUsd:  data[id]?.usd ?? 0,
-        change24h: data[id]?.usd_24h_change ?? null,
-      }
+      const id = cgMap[symbol.toUpperCase()] ?? symbol.toLowerCase()
+      return { symbol, priceUsd: data[id]?.usd ?? 0, change24h: data[id]?.usd_24h_change ?? null }
     })
 
     res.json({ prices, updatedAt: new Date().toISOString() })
@@ -389,10 +367,9 @@ app.get("/api/v1/prices", async (req, res) => {
   }
 })
 
-// GET /api/v1/aave/:address
+// ─── GET /api/v1/aave/:address ────────────────────────────────────────────────
 app.get("/api/v1/aave/:address", async (req, res) => {
   const { address } = req.params
-
   if (!address.startsWith("0x") || address.length !== 42) {
     return res.status(400).json({ error: "Invalid Celo address" })
   }
@@ -403,31 +380,29 @@ app.get("/api/v1/aave/:address", async (req, res) => {
       { "address": "...", "totalCollateralUsd": "...", "totalDebtUsd": "...", "availableBorrowsUsd": "...", "healthFactor": "..." }
       Get the Aave V3 position for address ${address}.`
     )
-    try {
-      res.json(JSON.parse(result))
-    } catch {
-      res.json({ address, raw: result })
-    }
+    try { res.json(JSON.parse(result)) } catch { res.json({ address, raw: result }) }
   } catch (e: any) {
     res.status(500).json({ error: e.message })
   }
 })
 
-// GET /health
+// ─── GET /health ──────────────────────────────────────────────────────────────
 app.get("/health", (_, res) => res.json({
   status:  "ok",
-  agent:   "CeloBank Agent API v1.0.0",
+  agent:   "CeloBank Agent API v2.0.0",
   wallet:  AGENT_ADDRESS,
   network: "Celo Mainnet (Chain ID: 42220)",
-  sdk:     "@celobank/agent-sdk@1.0.0",
+  sdk:     "@celobank/agent-sdk@1.0.1",
+  mode:    "non-custodial (v2) + custodial fallback",
   docs:    "/docs",
   uptime:  Math.floor(process.uptime()),
 }))
 
 app.listen(3000, () => {
-  console.log("🚀 CeloBank Agent API v1.0.0")
+  console.log("🚀 CeloBank Agent API v2.0.0")
   console.log("📍 http://localhost:3000")
   console.log("📚 Docs: http://localhost:3000/docs")
-  console.log(`💳 Wallet: ${AGENT_ADDRESS}`)
+  console.log(`💳 Agent Wallet: ${AGENT_ADDRESS}`)
   console.log("🌐 Network: Celo Mainnet")
+  console.log("🔓 Non-custodial mode: POST /api/v1/prepare")
 })

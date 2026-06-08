@@ -7,20 +7,44 @@ import {
   getPortfolioTool,
   getMultiPriceTool,
 } from "../tools/defi.js"
+import {
+  stakeCeloTool,
+  unstakeCeloTool,
+  getStakingPositionTool,
+  getYieldOptionsTool,
+} from "../tools/staking.js"
+import {
+  tradeIdeasTool,
+  getMarketOverviewTool,
+  getBridgeInfoTool,
+  getDailyDropStatusTool,
+} from "../tools/advanced.js"
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!
 const MODEL        = "llama-3.3-70b-versatile"
 const BASE_URL     = "https://api.groq.com/openai"
 
 const tools = {
-  get_balance:       getBalanceTool,
-  send_celo:         sendCeloTool,
-  get_celo_price:    getCeloPriceTool,
-  get_portfolio:     getPortfolioTool,
-  get_multi_price:   getMultiPriceTool,
-  swap_celo:         swapCeloTool,
-  get_aave_position: getAavePositionTool,
-  save_cusd:         saveCUSDTool,
+  // ── Core ──────────────────────────────────────────────
+  get_balance:          getBalanceTool,
+  send_celo:            sendCeloTool,
+  get_celo_price:       getCeloPriceTool,
+  get_portfolio:        getPortfolioTool,
+  get_multi_price:      getMultiPriceTool,
+  // ── DeFi ──────────────────────────────────────────────
+  swap_celo:            swapCeloTool,
+  get_aave_position:    getAavePositionTool,
+  save_cusd:            saveCUSDTool,
+  // ── Staking ───────────────────────────────────────────
+  stake_celo:           stakeCeloTool,
+  unstake_celo:         unstakeCeloTool,
+  get_staking_position: getStakingPositionTool,
+  get_yield_options:    getYieldOptionsTool,
+  // ── Advanced ──────────────────────────────────────────
+  trade_ideas:          tradeIdeasTool,
+  get_market_overview:  getMarketOverviewTool,
+  get_bridge_info:      getBridgeInfoTool,
+  get_dailydrop_status: getDailyDropStatusTool,
 }
 
 const DIRECT_RETURN_TOOLS = new Set([
@@ -32,9 +56,18 @@ const DIRECT_RETURN_TOOLS = new Set([
   "get_portfolio",
   "get_balance",
   "get_aave_position",
+  "stake_celo",
+  "unstake_celo",
+  "get_staking_position",
+  "get_yield_options",
+  "trade_ideas",
+  "get_market_overview",
+  "get_bridge_info",
+  "get_dailydrop_status",
 ])
 
 const toolSchemas = [
+  // ── Core ────────────────────────────────────────────────────────────────────
   {
     type: "function",
     function: {
@@ -65,20 +98,11 @@ const toolSchemas = [
   {
     type: "function",
     function: {
-      name: "get_celo_price",
-      description: "Get CELO price in USD",
-      parameters: { type: "object", properties: {}, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "get_portfolio",
-      description: "Get token balances (CELO, cUSD, cEUR, cREAL, USDC, USDT) for an address",
+      description: "Get full portfolio: CELO + all token balances for an address",
       parameters: {
         type: "object",
         properties: { address: { type: "string" } },
-        required: [],
       },
     },
   },
@@ -86,24 +110,21 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_multi_price",
-      description: "Get USD prices for tokens: CELO, cUSD, cEUR, cREAL, USDC, USDT",
-      parameters: {
-        type: "object",
-        properties: { tokens: { type: "string" } },
-        required: [],
-      },
+      description: "Get real-time prices for CELO and all Celo tokens with 24h change",
+      parameters: { type: "object", properties: {} },
     },
   },
+  // ── DeFi ────────────────────────────────────────────────────────────────────
   {
     type: "function",
     function: {
       name: "swap_celo",
-      description: "Swap CELO to cUSD, cEUR or cREAL via Mento V2",
+      description: "Swap CELO for a stablecoin (cUSD, cEUR, cREAL, USDC, USDT) via Mento V2",
       parameters: {
         type: "object",
         properties: {
-          amount:   { type: "string" },
-          tokenOut: { type: "string", enum: ["cUSD", "cEUR", "cREAL"] },
+          amount:   { type: "string", description: "Amount of CELO to swap" },
+          tokenOut: { type: "string", description: "Target token: cUSD, cEUR, cREAL, USDC, USDT" },
         },
         required: ["amount", "tokenOut"],
       },
@@ -113,11 +134,10 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "get_aave_position",
-      description: "Check Aave position: collateral, debt, health factor",
+      description: "Get Aave V3 lending position: collateral, debt, health factor",
       parameters: {
         type: "object",
         properties: { address: { type: "string" } },
-        required: [],
       },
     },
   },
@@ -125,101 +145,197 @@ const toolSchemas = [
     type: "function",
     function: {
       name: "save_cusd",
-      description: "Deposit cUSD on Aave to earn yield",
+      description: "Supply cUSD to Aave V3 to earn yield (~3-5% APY)",
       parameters: {
         type: "object",
-        properties: { amount: { type: "string" } },
+        properties: {
+          amount: { type: "string", description: "Amount of cUSD to supply" },
+          asset:  { type: "string", description: "Asset to supply: cUSD (default), USDC" },
+        },
         required: ["amount"],
+      },
+    },
+  },
+  // ── Staking ─────────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "stake_celo",
+      description: "Stake CELO to earn ~4% APY via Staked CELO (stCELO). Liquid, no lockup.",
+      parameters: {
+        type: "object",
+        properties: {
+          amount: { type: "string", description: "Amount of CELO to stake" },
+        },
+        required: ["amount"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "unstake_celo",
+      description: "Unstake stCELO back to CELO. Unbonding period ~3 days.",
+      parameters: {
+        type: "object",
+        properties: {
+          amount: { type: "string", description: "Amount of stCELO to unstake" },
+        },
+        required: ["amount"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_staking_position",
+      description: "Get staking position: CELO + stCELO balance and APY",
+      parameters: {
+        type: "object",
+        properties: { address: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_yield_options",
+      description: "Get all yield options on Celo with APY, risk, and instructions",
+      parameters: {
+        type: "object",
+        properties: {
+          riskLevel: { type: "string", description: "Filter by risk: low, medium, very low" },
+        },
+      },
+    },
+  },
+  // ── Advanced ────────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "trade_ideas",
+      description: "Analyze portfolio and generate personalized DeFi trade ideas and recommendations",
+      parameters: {
+        type: "object",
+        properties: { address: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_market_overview",
+      description: "Get real-time market overview for all Celo tokens with 24h price change",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_bridge_info",
+      description: "Get bridge options to move tokens to/from Celo network",
+      parameters: {
+        type: "object",
+        properties: {
+          from:  { type: "string" },
+          to:    { type: "string" },
+          token: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_dailydrop_status",
+      description: "Check DailyDrop streak status — check-in streak, badge, and reward eligibility",
+      parameters: {
+        type: "object",
+        properties: { address: { type: "string" } },
       },
     },
   },
 ]
 
-async function groqChat(messages: any[]) {
-  const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, temperature: 0 }),
-  })
-  return res.json()
-}
+// ─── System Prompt ────────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are CeloBank Agent — an advanced autonomous DeFi assistant on Celo blockchain.
 
-function truncateResult(result: string, maxChars = 400): string {
-  if (result.length <= maxChars) return result
-  return result.slice(0, maxChars) + "\n...(truncated)"
-}
+You can help users with:
+- 💼 PORTFOLIO: Check balances, token holdings, net worth
+- 💱 SWAP: Swap CELO ↔ cUSD/cEUR/cREAL/USDC/USDT via Mento V2
+- 🔒 STAKING: Stake CELO for ~4% APY via Staked CELO (stCELO)
+- 📈 AAVE: Supply cUSD/USDC to Aave V3 for yield (~3-5% APY)
+- 💡 TRADE IDEAS: Personalized portfolio analysis and DeFi recommendations
+- 📊 MARKET: Real-time prices and market overview for all Celo tokens
+- 🌉 BRIDGE: Info on how to move tokens between chains to/from Celo
+- 🔥 DAILYDROP: Check streak status and Proof of Presence badge
 
-export async function runAgent(input: string): Promise<string> {
-  const messages: any[] = [
-    {
-      role: "system",
-      content: `You are CeloBank, an AI bank on Celo Mainnet. Always use tools, never invent data. Reply in the user's language. Be warm and concise. Call each tool ONCE only.
+Always:
+- Be concise and actionable
+- Show transaction hashes and explorer links when available
+- Suggest the next best action after completing one
+- Detect language and respond accordingly
 
-IMPORTANT RULES:
-- If the user wants to deposit on Aave but does NOT specify an amount, ask them how much they want to deposit BEFORE calling save_cusd.
-- If the user wants to send CELO but does NOT specify an amount or recipient, ask for the missing info BEFORE calling send_celo.
-- If the user wants to swap but does NOT specify an amount, ask how much BEFORE calling swap_celo.
-- Never assume or invent amounts. Always confirm with the user first.`,
-    },
-    { role: "user", content: input },
+You support: English, French, Spanish, Portuguese, Swahili, Arabic, Italian, Chinese.`
+
+// ─── Run Agent ────────────────────────────────────────────────────────────────
+export async function runAgent(userMessage: string): Promise<string> {
+  const messages: { role: string; content: string; tool_call_id?: string; name?: string }[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user",   content: userMessage },
   ]
 
-  const calledToolsAcrossTurns = new Set<string>()
-
   for (let i = 0; i < 5; i++) {
-    const data = await groqChat(messages)
+    const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model:       MODEL,
+        messages,
+        tools:       toolSchemas,
+        tool_choice: "auto",
+      }),
+    })
+
+    const data = await response.json()
     const msg  = data.choices?.[0]?.message
 
-    if (!msg) {
-      console.log("Raw Groq response:", JSON.stringify(data))
-      return "Erreur de réponse"
+    if (!msg) return "❌ No response from AI model."
+
+    // No tool call → return text directly
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      return msg.content ?? "✅ Done."
     }
 
-    if (!msg.tool_calls?.length) {
-      return msg.content ?? "Erreur de réponse"
-    }
-
-    messages.push(msg)
-
-    const seenCallIds = new Set<string>()
+    // Process tool calls
+    messages.push({ role: "assistant", content: JSON.stringify(msg) })
 
     for (const call of msg.tool_calls) {
-      const toolName = call.function.name as keyof typeof tools
+      const toolName = call.function.name
+      const toolArgs = JSON.parse(call.function.arguments ?? "{}")
+      const toolFn   = (tools as Record<string, { invoke: (args: unknown) => Promise<string> }>)[toolName]
 
-      if (seenCallIds.has(call.id)) {
-        messages.push({ role: "tool", tool_call_id: call.id, content: "Duplicate call skipped." })
-        continue
+      let result = "❌ Tool not found."
+      if (toolFn) {
+        result = await toolFn.invoke(toolArgs)
       }
-      seenCallIds.add(call.id)
 
-      if (calledToolsAcrossTurns.has(toolName)) {
-        console.log(`  ⚠️ Tool ${toolName} already called in a previous turn, skip`)
-        messages.push({ role: "tool", tool_call_id: call.id, content: "Already executed." })
-        continue
-      }
-      calledToolsAcrossTurns.add(toolName)
-
-      const rawArgs = call.function.arguments
-      const args    = (rawArgs && rawArgs !== "null") ? (JSON.parse(rawArgs) ?? {}) : {}
-      console.log(`  🔧 Tool: ${toolName}`, args)
-
-      const result    = await (tools[toolName] as any).invoke(args)
-      const resultStr = String(result)
-
+      // Direct return for action tools
       if (DIRECT_RETURN_TOOLS.has(toolName)) {
-        return resultStr
+        return result
       }
 
       messages.push({
-        role:         "tool",
+        role:        "tool",
+        content:     result,
         tool_call_id: call.id,
-        content:      truncateResult(resultStr),
+        name:        toolName,
       })
     }
   }
 
-  return "Limite de tours atteinte"
+  return "❌ Agent loop limit reached."
 }
