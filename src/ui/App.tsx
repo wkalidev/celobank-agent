@@ -2,6 +2,30 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useConnect, useWalletClient, usePublicClient } from 'wagmi'
 import { sdk } from '@farcaster/frame-sdk'
+import { encodeFunctionData, parseEther } from "viem"
+
+// ─── DailyDrop Constants ──────────────────────────────────────────────────────
+const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
+const FEE_RECEIVER   = "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357" as `0x${string}`
+const CHECK_IN_FEE   = parseEther("0.001")
+const DAILYDROP_ABI  = [
+  { name: "checkIn",     type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  { name: "claimReward", type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  { name: "getUserData", type: "function", inputs: [{ internalType: "address", name: "_user", type: "address" }],
+    outputs: [
+      { internalType: "uint256", name: "streak",       type: "uint256" },
+      { internalType: "uint256", name: "lastCheckIn",  type: "uint256" },
+      { internalType: "uint256", name: "totalCheckIns",type: "uint256" },
+      { internalType: "bool",    name: "canCheckIn",   type: "bool"    },
+      { internalType: "bool",    name: "canClaim",     type: "bool"    },
+      { internalType: "uint256", name: "nextCheckIn",  type: "uint256" },
+    ], stateMutability: "view" },
+] as const
+
+interface StreakData {
+  current: number; best: number; total: number
+  canCheckIn: boolean; canClaim: boolean; nextCheckIn: number
+}
 
 interface Message {
   role: "user" | "agent"
@@ -35,6 +59,7 @@ const QUICK_ACTIONS = [
   { label: "◉ ÉPARGNER",  msg: "save 1 cUSD",                                color: "#00ff9f" },
   { label: "🔒 STAKE",     msg: "stake 1 CELO",                               color: "#00d4ff" },
   { label: "💡 IDEAS",     msg: "trade ideas",                                color: "#ffbe0b" },
+  { label: "▶ CHECK_IN",  msg: "__CHECKIN__",                                 color: "#00ff9f" },
 ]
 
 const LANGUAGES = [
@@ -185,6 +210,74 @@ export default function App() {
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
 
+  // ─── DailyDrop Streak ────────────────────────────────────────────────────
+  const [streak, setStreak] = useState<StreakData>({ current: 0, best: 0, total: 0, canCheckIn: true, canClaim: false, nextCheckIn: 0 })
+  const [checking, setChecking] = useState(false)
+  const [claiming, setClaiming] = useState(false)
+
+  const loadStreak = useCallback(async () => {
+    if (!address || !publicClient) return
+    try {
+      const data = await (publicClient as any).readContract({
+        address: DAILYDROP_CELO, abi: DAILYDROP_ABI, functionName: "getUserData", args: [address],
+      })
+      const stored = localStorage.getItem(`dd_streak_${address}`)
+      const best = stored ? Math.max(JSON.parse(stored).best ?? 0, Number(data[0])) : Number(data[0])
+      const s: StreakData = { current: Number(data[0]), best, total: Number(data[2]), canCheckIn: Boolean(data[3]), canClaim: Boolean(data[4]), nextCheckIn: Number(data[5]) }
+      setStreak(s)
+      localStorage.setItem(`dd_streak_${address}`, JSON.stringify(s))
+    } catch {}
+  }, [address, publicClient])
+
+  useEffect(() => { loadStreak() }, [loadStreak])
+
+  const doCheckIn = useCallback(async (): Promise<string> => {
+    if (!address || !walletClient || !publicClient) return "❌ Wallet not connected."
+    if (!streak.canCheckIn) {
+      const next = streak.nextCheckIn > 0 ? new Date(streak.nextCheckIn * 1000).toLocaleTimeString() : "tomorrow"
+      return `⏳ Already checked in today. Come back at ${next}`
+    }
+    setChecking(true)
+    try {
+      // Fee TX → ton wallet
+      const feeTx = await walletClient.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220 })
+      await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
+      // Check-in TX → DailyDrop contract
+      const tx = await walletClient.sendTransaction({
+        to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220,
+      })
+      await (publicClient as any).waitForTransactionReceipt({ hash: tx })
+      const newStreak = streak.current + 1
+      const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
+      setStreak(updated)
+      localStorage.setItem(`dd_streak_${address}`, JSON.stringify(updated))
+      const daysLeft = 7 - (newStreak % 7) || 7
+      const bonusMsg = newStreak % 7 === 0 ? "\n🎉 7-day bonus! Claim your DROP tokens!" : `\n${daysLeft} day${daysLeft > 1 ? "s" : ""} until bonus`
+      return `✅ CHECK_IN CONFIRMED\nStreak: ${newStreak} day${newStreak > 1 ? "s" : ""} 🔥${bonusMsg}\n\nTX: https://celoscan.io/tx/${tx}`
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Check-in cancelled."
+      if (msg.includes("already checked in")) { await loadStreak(); return "⏳ Already checked in today!" }
+      return `❌ Check-in failed: ${msg}`
+    } finally { setChecking(false) }
+  }, [address, walletClient, publicClient, streak, loadStreak])
+
+  const doClaimReward = useCallback(async (): Promise<string> => {
+    if (!address || !walletClient || !publicClient) return "❌ Wallet not connected."
+    if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
+    setClaiming(true)
+    try {
+      const tx = await walletClient.sendTransaction({
+        to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220,
+      })
+      await (publicClient as any).waitForTransactionReceipt({ hash: tx })
+      setStreak(s => ({ ...s, current: 0, canClaim: false }))
+      return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
+    } catch (err: unknown) {
+      return `❌ Claim failed: ${err instanceof Error ? err.message : String(err)}`
+    } finally { setClaiming(false) }
+  }, [address, walletClient, publicClient, streak])
+
   // ─── Execute prepared transactions via user wallet ────────────────────────
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
     if (!address || !walletClient || !publicClient) {
@@ -275,6 +368,17 @@ export default function App() {
   async function sendMessage(text?: string) {
     const msg = text || input
     if (!msg.trim() || loading) return
+
+    // ── CHECK_IN special action ──────────────────────────────────────────
+    if (msg === "__CHECKIN__") {
+      setMessages(prev => [...prev, { role: "user", content: "Daily check-in", timestamp: new Date() }])
+      setLoading(true)
+      const result = await doCheckIn()
+      setMessages(prev => [...prev, { role: "agent", content: result, timestamp: new Date() }])
+      setLoading(false)
+      return
+    }
+
     setMessages(prev => [...prev, { role: "user", content: msg, timestamp: new Date() }])
     setInput("")
     setLoading(true)
@@ -505,6 +609,25 @@ export default function App() {
             <div style={{ padding: "10px", borderRadius: 2, background: "rgba(0,255,159,0.04)", border: "1px solid rgba(0,255,159,0.2)" }}>
               <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.5, letterSpacing: "0.1em", marginBottom: 4 }}>🔓 NON-CUSTODIAL</div>
               <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.4, lineHeight: 1.8 }}>YOU SIGN YOUR TX<br />AGENT NEVER HOLDS<br />YOUR FUNDS</div>
+            </div>
+          )}
+          {/* ── STREAK WIDGET ── */}
+          {address && (
+            <div style={{ marginTop: 4, padding: "10px", borderRadius: 2, background: streak.canCheckIn ? "rgba(255,215,0,0.06)" : "rgba(0,255,159,0.04)", border: streak.canCheckIn ? "1px solid rgba(255,215,0,0.3)" : "1px solid rgba(0,255,159,0.2)" }}>
+              <div style={{ fontSize: 9, color: streak.canCheckIn ? "#ffd700" : "#00ff9f", letterSpacing: "0.1em", marginBottom: 6 }}>🔥 DAILY_STREAK</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: streak.canCheckIn ? "#ffd700" : "#00ff9f", marginBottom: 4 }}>{streak.current}d</div>
+              <div style={{ fontSize: 8, color: "#445", marginBottom: 6 }}>Best: {streak.best}d · Total: {streak.total}</div>
+              {streak.canClaim && (
+                <button onClick={async () => { const r = await doClaimReward(); setMessages(p => [...p, { role: "agent", content: r, timestamp: new Date() }]) }}
+                  disabled={claiming}
+                  style={{ width: "100%", padding: "5px", borderRadius: 2, fontSize: 8, fontFamily: "monospace", letterSpacing: "0.1em", cursor: "pointer", background: "rgba(0,255,159,0.15)", border: "1px solid rgba(0,255,159,0.5)", color: "#00ff9f", marginBottom: 4 }}>
+                  {claiming ? "..." : "🎁 CLAIM DROP"}
+                </button>
+              )}
+              <button onClick={() => sendMessage("__CHECKIN__")} disabled={!streak.canCheckIn || checking}
+                style={{ width: "100%", padding: "5px", borderRadius: 2, fontSize: 8, fontFamily: "monospace", letterSpacing: "0.1em", cursor: streak.canCheckIn ? "pointer" : "default", background: streak.canCheckIn ? "rgba(255,215,0,0.12)" : "rgba(0,255,159,0.05)", border: streak.canCheckIn ? "1px solid rgba(255,215,0,0.4)" : "1px solid rgba(0,255,159,0.15)", color: streak.canCheckIn ? "#ffd700" : "rgba(0,255,159,0.3)" }}>
+                {checking ? "CONFIRMING..." : streak.canCheckIn ? "▶ CHECK_IN · 0.001 CELO" : "✓ DONE"}
+              </button>
             </div>
           )}
         </div>
