@@ -11,6 +11,27 @@ const celoMainnet = defineChain({
         default: { name: "CeloScan", url: "https://celoscan.io" },
     },
 });
+// ─── DailyDrop Constants ──────────────────────────────────────────────────────
+const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6";
+const DAILYDROP_FEE_RECEIVER = "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357";
+const DAILYDROP_CHECK_IN_FEE = parseEther("0.001");
+const DAILYDROP_ABI = [
+    { name: "checkIn", type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
+    { name: "claimReward", type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
+    {
+        name: "getUserData", type: "function",
+        inputs: [{ internalType: "address", name: "_user", type: "address" }],
+        outputs: [
+            { internalType: "uint256", name: "streak", type: "uint256" },
+            { internalType: "uint256", name: "lastCheckIn", type: "uint256" },
+            { internalType: "uint256", name: "totalCheckIns", type: "uint256" },
+            { internalType: "bool", name: "canCheckIn", type: "bool" },
+            { internalType: "bool", name: "canClaim", type: "bool" },
+            { internalType: "uint256", name: "nextCheckIn", type: "uint256" },
+        ],
+        stateMutability: "view",
+    },
+];
 /**
  * CeloBankSDK — Infrastructure pour construire des agents DeFi autonomes sur Celo
  *
@@ -20,17 +41,11 @@ const celoMainnet = defineChain({
  *
  * const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
  *
- * // Lire le portefeuille
  * const portfolio = await sdk.getPortfolio()
- *
- * // Envoyer des CELO
- * const tx = await sdk.send({ to: "0xABC...", amount: "1.5" })
- *
- * // Swapper via Mento V2
- * const swap = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
- *
- * // Déposer sur Aave
- * const supply = await sdk.supplyAave({ amount: "50" })
+ * const swap      = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
+ * const supply    = await sdk.supplyAave({ amount: "50" })
+ * const streak    = await sdk.getStreak()
+ * const checkIn   = await sdk.checkIn()
  * ```
  */
 export class CeloBankSDK {
@@ -41,24 +56,19 @@ export class CeloBankSDK {
     constructor(config) {
         const rawKey = config.privateKey.trim();
         const privateKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`);
-        const rpcUrl = config.rpcUrl ?? CELO_RPC_DEFAULT;
-        const chain = config.rpcUrl
-            ? defineChain({ ...celoMainnet, rpcUrls: { default: { http: [rpcUrl] } } })
-            : celoMainnet;
         this.account = privateKeyToAccount(privateKey);
         this.address = this.account.address;
-        this.publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
-        this.walletClient = createWalletClient({ account: this.account, chain, transport: http(rpcUrl) });
+        const rpcUrl = config.rpcUrl ?? CELO_RPC_DEFAULT;
+        this.publicClient = createPublicClient({ chain: celoMainnet, transport: http(rpcUrl) });
+        this.walletClient = createWalletClient({ account: this.account, chain: celoMainnet, transport: http(rpcUrl) });
     }
-    // ─── Portfolio ─────────────────────────────────────────────────────────────
     /**
-     * Récupère les soldes CELO natif + tous les tokens ERC20 d'une adresse
-     * @param params.address — adresse cible (défaut: wallet de l'agent)
+     * Retourne le portefeuille complet : CELO natif + tous les tokens ERC20
      */
     async getPortfolio(params = {}) {
-        const addr = params.address ?? this.address;
+        const addr = (params.address ?? this.address);
         const nativeBalance = await this.publicClient.getBalance({ address: addr });
-        const tokenEntries = await Promise.all(Object.entries(TOKENS).map(async ([symbol, token]) => {
+        const tokenBalances = await Promise.all(Object.entries(TOKENS).map(async ([symbol, token]) => {
             try {
                 const balance = await this.publicClient.readContract({
                     address: token.address,
@@ -66,48 +76,36 @@ export class CeloBankSDK {
                     functionName: "balanceOf",
                     args: [addr],
                 });
-                return [symbol, parseFloat(formatUnits(balance, token.decimals)).toFixed(6)];
+                return [symbol, parseFloat(formatUnits(balance, token.decimals)).toFixed(4)];
             }
             catch {
-                return [symbol, "0"];
+                return [symbol, "0.0000"];
             }
         }));
         return {
             address: addr,
-            native: parseFloat(formatEther(nativeBalance)).toFixed(6),
-            tokens: Object.fromEntries(tokenEntries),
+            native: parseFloat(formatEther(nativeBalance)).toFixed(4),
+            tokens: Object.fromEntries(tokenBalances),
         };
     }
-    // ─── Prix ──────────────────────────────────────────────────────────────────
     /**
-     * Récupère les prix en USD depuis CoinGecko avec variation 24h
-     * @param params.tokens — liste de symboles (défaut: tous)
+     * Prix en temps réel + variation 24h via CoinGecko
      */
     async getPrices(params = {}) {
         const requested = params.tokens
-            ? params.tokens.map(t => t.toUpperCase()).filter(t => t in TOKENS)
+            ? params.tokens.map(t => t.toUpperCase()).filter(t => TOKENS[t])
             : Object.keys(TOKENS);
-        const ids = requested
-            .map(t => TOKENS[t].coingeckoId)
-            .join(",");
+        const ids = requested.map(t => TOKENS[t].coingeckoId).join(",");
         const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
-        if (!res.ok)
-            throw new Error(`CoinGecko API error: ${res.status}`);
         const data = await res.json();
-        return requested.map(symbol => {
-            const id = TOKENS[symbol].coingeckoId;
-            return {
-                symbol,
-                priceUsd: data[id]?.usd ?? 0,
-                change24h: data[id]?.usd_24h_change ?? null,
-            };
-        });
+        return requested.map(symbol => ({
+            symbol,
+            priceUsd: data[TOKENS[symbol].coingeckoId]?.usd ?? 0,
+            change24h: data[TOKENS[symbol].coingeckoId]?.usd_24h_change ?? 0,
+        }));
     }
-    // ─── Send ──────────────────────────────────────────────────────────────────
     /**
-     * Envoie des CELO natifs à une adresse
-     * @param params.to — adresse destinataire
-     * @param params.amount — montant en CELO (ex: "1.5")
+     * Envoyer du CELO natif
      */
     async send(params) {
         const txHash = await this.walletClient.sendTransaction({
@@ -124,62 +122,43 @@ export class CeloBankSDK {
             explorerUrl: `https://celoscan.io/tx/${txHash}`,
         };
     }
-    // ─── Swap Mento V2 ─────────────────────────────────────────────────────────
     /**
-     * Swap CELO → stablecoin via Mento V2
-     * @param params.amount — montant CELO à échanger
-     * @param params.tokenOut — token de sortie: "cUSD" | "cEUR" | "cREAL" | "USDC" | "USDT"
+     * Swapper CELO → stablecoin via Mento V2
      */
     async swap(params) {
         const symbol = Object.keys(TOKENS).find(k => k.toLowerCase() === params.tokenOut.toLowerCase());
-        if (!symbol) {
-            throw new Error(`Token "${params.tokenOut}" non supporté. Disponibles: ${Object.keys(TOKENS).join(", ")}`);
-        }
-        const exchangeKey = `CELO-${symbol}`;
-        const exchangeId = MENTO_EXCHANGE_IDS[exchangeKey];
-        if (!exchangeId) {
-            throw new Error(`Swap CELO→${symbol} non disponible via Mento V2`);
-        }
+        if (!symbol)
+            throw new Error(`Token "${params.tokenOut}" non supporté`);
+        const token = TOKENS[symbol];
         const parsed = parseEther(params.amount);
-        const tokenOut = TOKENS[symbol];
-        // 1. Approve
-        await this.walletClient.writeContract({
-            account: this.account,
-            chain: celoMainnet,
-            address: TOKENS.CELO.address,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [MENTO_BROKER, parsed],
+        const exchangeId = MENTO_EXCHANGE_IDS[symbol] ?? await this._getExchangeId(token.address);
+        if (!exchangeId)
+            throw new Error(`Pas de pool Mento V2 pour CELO→${symbol}`);
+        const approveHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: TOKENS.CELO.address, abi: ERC20_ABI,
+            functionName: "approve", args: [MENTO_BROKER, parsed],
         });
-        // 2. Swap
+        await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
         const txHash = await this.walletClient.writeContract({
-            account: this.account,
-            chain: celoMainnet,
-            address: MENTO_BROKER,
-            abi: BROKER_ABI,
+            account: this.account, chain: celoMainnet,
+            address: MENTO_BROKER, abi: BROKER_ABI,
             functionName: "swapIn",
-            args: [MENTO_BI_POOL_MANAGER, exchangeId, TOKENS.CELO.address, tokenOut.address, parsed, 0n],
+            args: [MENTO_BI_POOL_MANAGER, exchangeId, TOKENS.CELO.address, token.address, parsed, 0n],
         });
         return {
-            success: true,
-            amountIn: params.amount,
-            tokenOut: symbol,
-            txHash,
-            explorerUrl: `https://celoscan.io/tx/${txHash}`,
+            success: true, amountIn: params.amount, tokenOut: symbol,
+            txHash, explorerUrl: `https://celoscan.io/tx/${txHash}`,
         };
     }
-    // ─── Aave ──────────────────────────────────────────────────────────────────
     /**
-     * Retourne la position DeFi complète d'une adresse sur Aave V3
-     * @param params.address — adresse cible (défaut: wallet de l'agent)
+     * Lire la position Aave V3
      */
     async getAavePosition(params = {}) {
-        const addr = params.address ?? this.address;
+        const addr = (params.address ?? this.address);
         const data = await this.publicClient.readContract({
-            address: AAVE_POOL,
-            abi: AAVE_POOL_ABI,
-            functionName: "getUserAccountData",
-            args: [addr],
+            address: AAVE_POOL, abi: AAVE_POOL_ABI,
+            functionName: "getUserAccountData", args: [addr],
         });
         const [collateral, debt, available, , , healthFactor] = data;
         return {
@@ -191,42 +170,145 @@ export class CeloBankSDK {
         };
     }
     /**
-     * Dépose un asset sur Aave V3 pour générer des intérêts automatiquement
-     * @param params.amount — montant à déposer
-     * @param params.asset — token à déposer (défaut: "cUSD")
+     * Déposer sur Aave V3 pour générer des intérêts
      */
     async supplyAave(params) {
         const assetSymbol = (params.asset ?? "cUSD").toUpperCase();
         const token = TOKENS[assetSymbol];
-        if (!token) {
+        if (!token)
             throw new Error(`Asset "${assetSymbol}" non supporté pour Aave`);
-        }
         const parsed = parseUnits(params.amount, token.decimals);
-        // 1. Approve
         await this.walletClient.writeContract({
-            account: this.account,
-            chain: celoMainnet,
-            address: token.address,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [AAVE_POOL, parsed],
+            account: this.account, chain: celoMainnet,
+            address: token.address, abi: ERC20_ABI,
+            functionName: "approve", args: [AAVE_POOL, parsed],
         });
-        // 2. Supply
         const txHash = await this.walletClient.writeContract({
-            account: this.account,
-            chain: celoMainnet,
-            address: AAVE_POOL,
-            abi: AAVE_POOL_ABI,
+            account: this.account, chain: celoMainnet,
+            address: AAVE_POOL, abi: AAVE_POOL_ABI,
             functionName: "supply",
             args: [token.address, parsed, this.address, 0],
         });
         return {
-            success: true,
-            asset: assetSymbol,
-            amount: params.amount,
-            txHash,
+            success: true, asset: assetSymbol, amount: params.amount,
+            txHash, explorerUrl: `https://celoscan.io/tx/${txHash}`,
+        };
+    }
+    // ─── DailyDrop Methods ──────────────────────────────────────────────────────
+    /**
+     * Lire le streak DailyDrop d'une adresse
+     * @example
+     * const streak = await sdk.getStreak()
+     * console.log(`Streak: ${streak.streak} days`)
+     */
+    async getStreak(params = {}) {
+        const addr = (params.address ?? this.address);
+        const data = await this.publicClient.readContract({
+            address: DAILYDROP_CELO,
+            abi: DAILYDROP_ABI,
+            functionName: "getUserData",
+            args: [addr],
+        });
+        const nextCheckInTs = Number(data[5]);
+        return {
+            address: addr,
+            streak: Number(data[0]),
+            totalCheckIns: Number(data[2]),
+            canCheckIn: Boolean(data[3]),
+            canClaim: Boolean(data[4]),
+            nextCheckIn: nextCheckInTs,
+            nextCheckInDate: nextCheckInTs > 0
+                ? new Date(nextCheckInTs * 1000).toISOString()
+                : "now",
+        };
+    }
+    /**
+     * Daily check-in sur DailyDrop
+     * - Envoie 0.001 CELO de fee
+     * - Appelle checkIn() sur le contrat
+     * - Après 7 jours → claimDrop() pour recevoir 10 DROP
+     * @example
+     * const result = await sdk.checkIn()
+     * console.log(result.message) // "6 days until reward"
+     */
+    async checkIn() {
+        const streakData = await this.getStreak();
+        if (!streakData.canCheckIn) {
+            throw new Error(`Already checked in today. Next: ${streakData.nextCheckInDate}`);
+        }
+        // TX 1: Fee → zcodebase.eth
+        const feeTxHash = await this.walletClient.sendTransaction({
+            account: this.account, chain: celoMainnet,
+            to: DAILYDROP_FEE_RECEIVER,
+            value: DAILYDROP_CHECK_IN_FEE,
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash: feeTxHash });
+        // TX 2: Check-in on-chain
+        const checkInTxHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: DAILYDROP_CELO,
+            abi: DAILYDROP_ABI,
+            functionName: "checkIn",
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash: checkInTxHash });
+        const newStreak = streakData.streak + 1;
+        const daysLeft = 7 - (newStreak % 7) || 7;
+        const message = newStreak % 7 === 0
+            ? `🎉 7-day streak! Call claimDrop() to receive 10 DROP tokens`
+            : `${daysLeft} day${daysLeft > 1 ? "s" : ""} until reward`;
+        return {
+            success: true, streak: newStreak,
+            feeTxHash, checkInTxHash,
+            explorerUrl: `https://celoscan.io/tx/${checkInTxHash}`,
+            message,
+        };
+    }
+    /**
+     * Claim 10 DROP tokens après 7 jours de streak
+     * @example
+     * const result = await sdk.claimDrop()
+     */
+    async claimDrop() {
+        const streakData = await this.getStreak();
+        if (!streakData.canClaim) {
+            throw new Error(`Cannot claim yet. Need ${7 - streakData.streak} more days.`);
+        }
+        const txHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: DAILYDROP_CELO,
+            abi: DAILYDROP_ABI,
+            functionName: "claimReward",
+        });
+        return {
+            success: true, txHash, amount: "10 DROP",
             explorerUrl: `https://celoscan.io/tx/${txHash}`,
         };
+    }
+    // ─── Private helpers ────────────────────────────────────────────────────────
+    async _getExchangeId(tokenAddress) {
+        const BI_POOL_ABI = [{
+                name: "getExchanges", type: "function", inputs: [],
+                outputs: [{ name: "", type: "tuple[]", components: [
+                            { name: "exchangeId", type: "bytes32" },
+                            { name: "assets", type: "address[]" },
+                        ] }],
+                stateMutability: "view",
+            }];
+        try {
+            const exchanges = await this.publicClient.readContract({
+                address: MENTO_BI_POOL_MANAGER, abi: BI_POOL_ABI, functionName: "getExchanges",
+            });
+            const celoAddr = TOKENS.CELO.address.toLowerCase();
+            const tokenAddr = tokenAddress.toLowerCase();
+            for (const ex of exchanges) {
+                const assets = ex.assets.map((a) => a.toLowerCase());
+                if (assets.includes(celoAddr) && assets.includes(tokenAddr)) {
+                    return ex.exchangeId;
+                }
+            }
+        }
+        catch { }
+        return null;
     }
 }
 //# sourceMappingURL=CeloBankSDK.js.map
