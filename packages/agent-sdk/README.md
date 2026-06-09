@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
 
-`@celobank/agent-sdk` is the **infrastructure layer** any developer needs to build autonomous financial agents on Celo. Portfolio reads, token swaps via Mento V2, Aave V3 DeFi positions, and native CELO transfers — all in one typed SDK.
+`@celobank/agent-sdk` is the **infrastructure layer** any developer needs to build autonomous financial agents on Celo. Portfolio reads, token swaps via Mento V2, Aave V3 DeFi positions, native CELO transfers, and daily check-ins — all in one typed SDK.
 
 ---
 
@@ -30,6 +30,8 @@ const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
 const portfolio = await sdk.getPortfolio()
 const swap      = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
 const supply    = await sdk.supplyAave({ amount: "50" })
+const streak    = await sdk.getStreak()
+const checkIn   = await sdk.checkIn()
 ```
 
 ---
@@ -73,7 +75,7 @@ const portfolio = await sdk.getPortfolio({ address: "0xABC..." })
 // Returns:
 {
   address: "0xDEAc...",
-  native: "207.340000",       // native CELO
+  native: "207.340000",
   tokens: {
     cUSD:  "45.200000",
     cEUR:  "0.000000",
@@ -92,7 +94,6 @@ Real-time prices from CoinGecko with 24h change.
 
 ```typescript
 const prices = await sdk.getPrices()
-// or specific tokens:
 const prices = await sdk.getPrices({ tokens: ["CELO", "cUSD", "USDC"] })
 
 // Returns:
@@ -109,10 +110,7 @@ const prices = await sdk.getPrices({ tokens: ["CELO", "cUSD", "USDC"] })
 Send native CELO to any address.
 
 ```typescript
-const result = await sdk.send({
-  to: "0xRecipient...",
-  amount: "1.5",   // CELO
-})
+const result = await sdk.send({ to: "0xRecipient...", amount: "1.5" })
 
 // Returns:
 {
@@ -130,14 +128,10 @@ const result = await sdk.send({
 
 Swap CELO for a stablecoin via **Mento V2**.
 
-Exchange IDs are loaded dynamically from the BiPoolManager contract — no hardcoded values, always up to date.
-
-The swap flow is: `approve → waitForTransactionReceipt → swapIn` to avoid nonce collisions.
-
 ```typescript
 const result = await sdk.swap({
-  amount: "10",        // CELO to swap
-  tokenOut: "cUSD",    // "cUSD" | "cEUR" | "cREAL" | "KESm" | "NGNm" | "GHSm" | "XOFm" | "ZARm"
+  amount: "10",
+  tokenOut: "cUSD",  // "cUSD" | "cEUR" | "cREAL" | "KESm" | "NGNm" | "GHSm" | "XOFm" | "ZARm"
 })
 
 // Returns:
@@ -158,8 +152,6 @@ Read a DeFi position on **Aave V3 Celo**.
 
 ```typescript
 const position = await sdk.getAavePosition()
-// or:
-const position = await sdk.getAavePosition({ address: "0xABC..." })
 
 // Returns:
 {
@@ -177,13 +169,8 @@ const position = await sdk.getAavePosition({ address: "0xABC..." })
 
 Deposit an asset on Aave V3 to earn yield automatically.
 
-The supply flow is: `approve → waitForTransactionReceipt → supply` to avoid nonce collisions.
-
 ```typescript
-const result = await sdk.supplyAave({
-  amount: "50",      // amount to deposit
-  asset: "cUSD",     // optional, defaults to "cUSD"
-})
+const result = await sdk.supplyAave({ amount: "50", asset: "cUSD" })
 
 // Returns:
 {
@@ -192,6 +179,73 @@ const result = await sdk.supplyAave({
   amount: "50",
   txHash: "0xabc...",
   explorerUrl: "https://celoscan.io/tx/0xabc..."
+}
+```
+
+---
+
+### `getStreak(params?)` ✨ New in v1.0.2
+
+Read the DailyDrop streak for an address — Proof of Presence on Celo.
+
+```typescript
+const streak = await sdk.getStreak()
+// or for any address:
+const streak = await sdk.getStreak({ address: "0xABC..." })
+
+// Returns:
+{
+  address:         "0xDEAc...",
+  streak:          7,           // current streak in days
+  totalCheckIns:   42,          // all-time check-ins
+  canCheckIn:      false,       // already checked in today
+  canClaim:        true,        // 7-day streak reached → claim DROP
+  nextCheckIn:     1780613801,  // unix timestamp
+  nextCheckInDate: "2026-06-05T08:00:00.000Z"
+}
+```
+
+---
+
+### `checkIn()` ✨ New in v1.0.2
+
+Daily check-in on the DailyDrop contract. Sends 0.001 CELO fee + calls `checkIn()` on-chain.
+After 7 consecutive days → call `claimDrop()` to receive 10 DROP tokens.
+
+```typescript
+const result = await sdk.checkIn()
+
+// Returns:
+{
+  success:       true,
+  streak:        1,
+  feeTxHash:     "0xfee...",
+  checkInTxHash: "0xcheckin...",
+  explorerUrl:   "https://celoscan.io/tx/0xcheckin...",
+  message:       "6 days until reward"
+}
+```
+
+**Error if already checked in today:**
+```
+Error: Already checked in today. Next: 2026-06-06T08:00:00.000Z
+```
+
+---
+
+### `claimDrop()` ✨ New in v1.0.2
+
+Claim 10 DROP tokens after completing a 7-day streak.
+
+```typescript
+const result = await sdk.claimDrop()
+
+// Returns:
+{
+  success:     true,
+  txHash:      "0xabc...",
+  explorerUrl: "https://celoscan.io/tx/0xabc...",
+  amount:      "10 DROP"
 }
 ```
 
@@ -209,10 +263,8 @@ const result = await sdk.supplyAave({
 
 ## Token Registry
 
-All Celo Mainnet token addresses are exported from the SDK:
-
 ```typescript
-import { TOKENS, AAVE_POOL, BROKER, BI_POOL_MANAGER } from "@celobank/agent-sdk"
+import { TOKENS, AAVE_POOL, MENTO_BROKER, MENTO_BI_POOL_MANAGER } from "@celobank/agent-sdk"
 
 console.log(TOKENS.cUSD.address)   // 0x765DE816845861e75A25fCA122bb6898B8B1282a
 console.log(TOKENS.USDC.decimals)  // 6
@@ -231,13 +283,11 @@ console.log(TOKENS.USDC.decimals)  // 6
 | USDC   | `0xcebA9300f2b948710d2653dD7B07f33A8B32118C` | 6  |
 | USDT   | `0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e` | 6  |
 
-Extra swap tokens (Mento stablecoins): `KESm`, `NGNm`, `GHSm`, `XOFm`, `ZARm`, `GBPm`
+Extra swap tokens: `KESm`, `NGNm`, `GHSm`, `XOFm`, `ZARm`, `GBPm`
 
 ---
 
 ## On-Chain Infrastructure
-
-This SDK wraps verified Celo Mainnet contracts:
 
 | Protocol | Contract | Address |
 |----------|----------|---------|
@@ -245,22 +295,21 @@ This SDK wraps verified Celo Mainnet contracts:
 | Mento BiPool Manager | Exchange provider | `0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901` |
 | Aave V3 Pool | Lending/borrowing | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` |
 | ERC-8004 Registry | Agent identity | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` |
+| DailyDrop | Check-in & streak | `0x63596cf6601ec2240A295ff2840C8d6653252AE6` |
 
 ---
 
-## Tech Stack
+## Changelog
 
-- **Blockchain**: Celo L2 (OP Stack), Mainnet only
-- **On-chain**: viem v2
-- **Language**: TypeScript (fully typed)
-- **DeFi**: Mento V2 (dynamic exchange ID lookup), Aave V3
-- **Identity**: ERC-8004
+### v1.0.2
+- ✨ `getStreak(params?)` — read DailyDrop streak for any address
+- ✨ `checkIn()` — daily check-in with 0.001 CELO fee + on-chain TX
+- ✨ `claimDrop()` — claim 10 DROP tokens after 7-day streak
+- 🔧 Added DOM lib to tsconfig for fetch support
 
----
-
-## Contributing
-
-PRs welcome. This is open infrastructure — built for the builders.
+### v1.0.1
+- Initial public release
+- `getPortfolio`, `getPrices`, `send`, `swap`, `getAavePosition`, `supplyAave`
 
 ---
 
