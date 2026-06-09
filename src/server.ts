@@ -408,6 +408,39 @@ app.get("/mcp", (_, res) => res.json({
   endpoint: "https://celobank-agent-production.up.railway.app",
 }))
 
+// ─── POST /mcp (JSON-RPC for 8004scan) ───────────────────────────────────────
+app.post("/mcp", (req, res) => {
+  const { method, id } = req.body || {}
+  if (method === "initialize") {
+    return res.json({
+      jsonrpc: "2.0", id,
+      result: {
+        protocolVersion: "2024-11-05",
+        serverInfo: { name: "CeloBank Agent", version: "2.0.0" },
+        capabilities: { tools: {} },
+      }
+    })
+  }
+  if (method === "tools/list") {
+    return res.json({
+      jsonrpc: "2.0", id,
+      result: { tools: [
+        { name: "get_portfolio",    description: "Get wallet portfolio on Celo" },
+        { name: "get_prices",       description: "Get real-time token prices" },
+        { name: "swap",             description: "Swap CELO to stablecoin via Mento V2" },
+        { name: "stake",            description: "Stake CELO for stCELO (~4% APY)" },
+        { name: "save_aave",        description: "Supply to Aave V3 (~3-5% APY)" },
+        { name: "send",             description: "Send CELO to any address" },
+        { name: "trade_ideas",      description: "AI trade recommendations" },
+        { name: "bridge_info",      description: "Bridge info (Squid, Jumper, Wormhole)" },
+        { name: "dailydrop_status", description: "DailyDrop streak status" },
+        { name: "daily_checkin",    description: "Daily check-in on DailyDrop" },
+      ]}
+    })
+  }
+  return res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
+})
+
 app.listen(3000, () => {
   console.log("🚀 CeloBank Agent API v2.0.0")
   console.log("📍 http://localhost:3000")
