@@ -398,6 +398,16 @@ app.get("/health", (_, res) => res.json({
   uptime:  Math.floor(process.uptime()),
 }))
 
+// ─── GET /mcp (8004scan health check) ───────────────────────────────────────
+app.get("/mcp", (_, res) => res.json({
+  name: "CeloBank Agent",
+  version: "2.0.0",
+  description: "Non-custodial DeFi agent on Celo Mainnet",
+  tools: ["get_portfolio","get_prices","swap","save_aave","stake","send","trade_ideas","bridge_info","dailydrop_status"],
+  status: "healthy",
+  endpoint: "https://celobank-agent-production.up.railway.app",
+}))
+
 app.listen(3000, () => {
   console.log("🚀 CeloBank Agent API v2.0.0")
   console.log("📍 http://localhost:3000")
