@@ -3,7 +3,7 @@ import { encodeFunctionData, parseEther, formatEther } from "viem"
 import { publicClient } from "./prepare.js"
 import type { PrepareResult, UnsignedTx } from "./prepare.js"
 
-const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x0000000000000000000000000000000000000000") as `0x${string}`
+const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e") as `0x${string}`
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 const FACTORY_WRITE_ABI = [

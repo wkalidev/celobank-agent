@@ -1,13 +1,78 @@
 import "dotenv/config"
 import express from "express"
 import cors from "cors"
+import { rateLimit } from "express-rate-limit"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
+
 const app = express()
-app.use(cors())
-app.use(express.json())
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  "https://celobank-agent.vercel.app",
+  "https://celobank-agent-git-main.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+]
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl, Swagger, mobile apps)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
+    cb(null, true) // keep public for SDK integrations; rate limiting is the real guard
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: false,
+}))
+
+app.use(express.json({ limit: "64kb" }))
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+const chatLimit = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+})
+
+const prepareLimit = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+})
+
+// ─── Input validation helpers ─────────────────────────────────────────────────
+function isValidAddress(addr: unknown): addr is string {
+  return typeof addr === "string" && /^0x[0-9a-fA-F]{40}$/.test(addr)
+}
+
+function isValidAmount(amount: unknown): boolean {
+  if (typeof amount !== "string") return false
+  const n = parseFloat(amount)
+  return !isNaN(n) && n > 0 && isFinite(n)
+}
+
+function safeError(e: unknown): string {
+  // Log full error server-side, return generic message to client
+  console.error("Internal error:", e instanceof Error ? e.message : String(e))
+  if (e instanceof Error && (
+    e.message.includes("Token") ||
+    e.message.includes("token") ||
+    e.message.includes("required") ||
+    e.message.includes("supply") ||
+    e.message.includes("symbol")
+  )) {
+    return e.message  // safe validation messages
+  }
+  return "Internal server error"
+}
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
 const AGENT_ADDRESS = account.address
@@ -18,7 +83,7 @@ function detectLanguage(text: string): string {
   if (/[àâäéèêëîïôùûüç]/.test(t) || /\b(je|tu|il|nous|vous|ils|est|les|des|une|pour|avec|sur|mon|ma|mes|solde|envoie|quel|quelle)\b/.test(t)) return "french"
   if (/\b(io|tu|lui|noi|voi|loro|sono|buona|sera|grazie|prego|mio|mia)\b/.test(t)) return "italian"
   if (/\b(yo|tú|él|nosotros|es|los|las|una|para|con|hola|gracias|mi|saldo)\b/.test(t)) return "spanish"
-  if (/[\u0600-\u06FF]/.test(t)) return "arabic"
+  if (/[؀-ۿ]/.test(t)) return "arabic"
   if (/\b(mimi|wewe|yeye|sisi|ninyi|wao|habari|asante|karibu)\b/.test(t)) return "swahili"
   return "english"
 }
@@ -88,6 +153,7 @@ This is the recommended approach — the agent never holds user funds.
     { name: "Prepare",   description: "Non-custodial transaction preparation" },
     { name: "Wallet",    description: "Portfolio & balance reads" },
     { name: "Prices",    description: "Real-time token prices" },
+    { name: "Tokens",    description: "Token registry" },
     { name: "DeFi",      description: "Aave V3 positions" },
     { name: "System",    description: "Health & status" },
   ],
@@ -96,7 +162,7 @@ This is the recommended approach — the agent never holds user funds.
       post: {
         tags: ["Agent"],
         summary: "Send a message to the AI agent",
-        description: "The agent understands natural language in 8 languages and executes DeFi actions on Celo Mainnet.",
+        description: "The agent understands natural language in 8 languages and executes DeFi actions on Celo Mainnet. Rate limited to 20 req/min.",
         requestBody: {
           required: true,
           content: {
@@ -113,20 +179,9 @@ This is the recommended approach — the agent never holds user funds.
           },
         },
         responses: {
-          200: {
-            description: "Agent response",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    response: { type: "string" },
-                    language: { type: "string" },
-                  },
-                },
-              },
-            },
-          },
+          200: { description: "Agent response", content: { "application/json": { schema: { type: "object", properties: { response: { type: "string" }, language: { type: "string" } } } } } },
+          400: { description: "Bad request" },
+          429: { description: "Rate limit exceeded" },
         },
       },
     },
@@ -134,11 +189,7 @@ This is the recommended approach — the agent never holds user funds.
       post: {
         tags: ["Prepare"],
         summary: "Prepare unsigned transactions (non-custodial)",
-        description: `Prepares DeFi transactions without signing them.
-Returns calldata that the frontend submits via the user's own wallet (wagmi/RainbowKit/MiniPay).
-The agent never holds user funds in this mode.
-
-**Supported actions**: swap, supply_aave, send, stake`,
+        description: "Prepares DeFi transactions without signing them. Rate limited to 30 req/min.\n\n**Supported actions**: swap, supply_aave, send, stake, launch_token, get_tokens, get_trending",
         requestBody: {
           required: true,
           content: {
@@ -147,48 +198,18 @@ The agent never holds user funds in this mode.
                 type: "object",
                 required: ["action", "userAddress", "params"],
                 properties: {
-                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake"], example: "swap" },
+                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake", "launch_token", "get_tokens", "get_trending"], example: "swap" },
                   userAddress: { type: "string", example: "0xDEAc..." },
-                  params: {
-                    type: "object",
-                    description: "Action-specific parameters",
-                    example: { amount: "10", tokenOut: "cUSD" },
-                  },
+                  params:      { type: "object", description: "Action-specific parameters", example: { amount: "10", tokenOut: "cUSD" } },
                 },
               },
             },
           },
         },
         responses: {
-          200: {
-            description: "Unsigned transactions ready to sign",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    success:      { type: "boolean" },
-                    action:       { type: "string" },
-                    userAddress:  { type: "string" },
-                    transactions: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          to:          { type: "string" },
-                          data:        { type: "string" },
-                          value:       { type: "string" },
-                          chainId:     { type: "number" },
-                          description: { type: "string" },
-                        },
-                      },
-                    },
-                    summary: { type: "string" },
-                  },
-                },
-              },
-            },
-          },
+          200: { description: "Unsigned transactions ready to sign" },
+          400: { description: "Invalid input" },
+          429: { description: "Rate limit exceeded" },
         },
       },
     },
@@ -206,6 +227,14 @@ The agent never holds user funds in this mode.
         summary: "Get real-time token prices",
         parameters: [{ name: "tokens", in: "query", schema: { type: "string" }, example: "CELO,cUSD,USDC" }],
         responses: { 200: { description: "Token prices with 24h change" } },
+      },
+    },
+    "/api/v1/tokens": {
+      get: {
+        tags: ["Tokens"],
+        summary: "List all verified Celo tokens",
+        description: "Returns all tokens from the official Celo token list (chainId 42220).",
+        responses: { 200: { description: "Token list with addresses and decimals" } },
       },
     },
     "/api/v1/aave/{address}": {
@@ -232,56 +261,87 @@ app.get("/",              (_, res) => res.send(swaggerHTML))
 app.get("/docs",          (_, res) => res.send(swaggerHTML))
 app.get("/api/v1/openapi.json", (_, res) => res.json(openApiSpec))
 
-// ─── POST /api/v1/chat — Agent IA ─────────────────────────────────────────────
-app.post("/api/v1/chat", async (req, res) => {
+// ─── POST /api/v1/chat ────────────────────────────────────────────────────────
+app.post("/api/v1/chat", chatLimit, async (req, res) => {
   const { message, userAddress } = req.body
-  if (!message) return res.status(400).json({ error: "message is required" })
+
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    return res.status(400).json({ error: "message is required and must be a non-empty string" })
+  }
+  if (message.length > 2000) {
+    return res.status(400).json({ error: "message must be 2000 characters or fewer" })
+  }
+  if (userAddress && !isValidAddress(userAddress)) {
+    return res.status(400).json({ error: "userAddress must be a valid Ethereum address" })
+  }
 
   try {
     const lang            = detectLanguage(message)
     const langHint        = langInstructions[lang]
-    const walletAddress   = userAddress || AGENT_ADDRESS
+    const walletAddress   = isValidAddress(userAddress) ? userAddress : AGENT_ADDRESS
     const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
 
-    console.log(`👤 [${lang}] [${walletAddress.slice(0, 8)}...]: ${message}`)
+    console.log(`👤 [${lang}] [${walletAddress.slice(0, 8)}...]: ${message.slice(0, 80)}`)
     const response = await runAgent(enrichedMessage)
-    console.log(`🤖 Agent: ${response}`)
+    console.log(`🤖 Agent response sent (${response.length} chars)`)
 
     res.json({ response, language: lang })
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
-// Rétrocompatibilité
-app.post("/chat", async (req, res) => {
+// Backward-compat alias
+app.post("/chat", chatLimit, async (req, res) => {
   const { message, userAddress } = req.body
-  if (!message) return res.status(400).json({ error: "Message requis" })
+  if (!message || typeof message !== "string") return res.status(400).json({ error: "Message requis" })
+  if (userAddress && !isValidAddress(userAddress)) return res.status(400).json({ error: "Invalid address" })
 
   try {
     const lang            = detectLanguage(message)
     const langHint        = langInstructions[lang]
-    const walletAddress   = userAddress || AGENT_ADDRESS
+    const walletAddress   = isValidAddress(userAddress) ? userAddress : AGENT_ADDRESS
     const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
     const response        = await runAgent(enrichedMessage)
     res.json({ response })
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
-// ─── POST /api/v1/prepare — Non-custodial TX preparation ──────────────────────
-app.post("/api/v1/prepare", async (req, res) => {
+// ─── POST /api/v1/prepare ─────────────────────────────────────────────────────
+app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
   const { action, userAddress, params } = req.body
 
-  if (!userAddress) {
-    return res.status(400).json({ error: "userAddress is required" })
+  if (!isValidAddress(userAddress)) {
+    return res.status(400).json({ error: "userAddress must be a valid Ethereum address (0x...)" })
   }
-  if (!action) {
+  if (!action || typeof action !== "string") {
     return res.status(400).json({ error: "action is required" })
   }
-  if (!params) {
+  if (!params || typeof params !== "object") {
     return res.status(400).json({ error: "params is required" })
+  }
+
+  // Per-action param validation
+  if (action === "swap") {
+    if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
+    if (!params.tokenOut || typeof params.tokenOut !== "string") return res.status(400).json({ error: "params.tokenOut is required" })
+  }
+  if (action === "supply_aave" || action === "save") {
+    if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
+  }
+  if (action === "send") {
+    if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
+    if (!isValidAddress(params.to)) return res.status(400).json({ error: "params.to must be a valid Ethereum address" })
+  }
+  if (action === "stake") {
+    if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
+  }
+  if (action === "launch_token") {
+    if (!params.name || typeof params.name !== "string") return res.status(400).json({ error: "params.name is required" })
+    if (!params.symbol || typeof params.symbol !== "string") return res.status(400).json({ error: "params.symbol is required" })
+    if (!isValidAmount(params.totalSupply)) return res.status(400).json({ error: "params.totalSupply must be a positive number" })
   }
 
   console.log(`🔧 [prepare] action=${action} user=${userAddress.slice(0, 8)}...`)
@@ -321,18 +381,17 @@ app.post("/api/v1/prepare", async (req, res) => {
         return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, launch_token, get_tokens, get_trending` })
     }
 
-    console.log(`✅ [prepare] ${action} prepared for ${userAddress.slice(0, 8)}... — ${result.transactions.length} TX(s)`)
+    console.log(`✅ [prepare] ${action} — ${result.transactions.length} TX(s)`)
     res.json(result)
-  } catch (e: any) {
-    console.error(`❌ [prepare] error:`, e.message)
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
 // ─── GET /api/v1/portfolio/:address ──────────────────────────────────────────
 app.get("/api/v1/portfolio/:address", async (req, res) => {
   const { address } = req.params
-  if (!address.startsWith("0x") || address.length !== 42) {
+  if (!isValidAddress(address)) {
     return res.status(400).json({ error: "Invalid Celo address" })
   }
 
@@ -343,8 +402,8 @@ app.get("/api/v1/portfolio/:address", async (req, res) => {
       Get the portfolio for address ${address}.`
     )
     try { res.json(JSON.parse(result)) } catch { res.json({ address, raw: result }) }
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
@@ -354,7 +413,7 @@ app.get("/api/v1/prices", async (req, res) => {
 
   try {
     const tokenList = tokens
-      ? tokens.toUpperCase().split(",").map(t => t.trim())
+      ? tokens.toUpperCase().split(",").map(t => t.trim()).filter(t => /^[A-Za-z0-9]{1,10}$/.test(t)).slice(0, 20)
       : ["CELO", "cUSD", "cEUR", "cREAL", "USDC", "USDT"]
 
     const cgMap: Record<string, string> = {
@@ -372,12 +431,12 @@ app.get("/api/v1/prices", async (req, res) => {
     })
 
     res.json({ prices, updatedAt: new Date().toISOString() })
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
-// ─── GET /api/v1/tokens — Official Celo token list (chainId 42220) ───────────
+// ─── GET /api/v1/tokens ───────────────────────────────────────────────────────
 app.get("/api/v1/tokens", async (_req, res) => {
   try {
     const upstream = await fetch("https://celo-org.github.io/celo-token-list/celo.tokenlist.json")
@@ -390,15 +449,15 @@ app.get("/api/v1/tokens", async (_req, res) => {
       logoURI:  t.logoURI,
     }))
     res.json({ count: tokens.length, tokens, source: "https://celo-org.github.io/celo-token-list/celo.tokenlist.json" })
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
 // ─── GET /api/v1/aave/:address ────────────────────────────────────────────────
 app.get("/api/v1/aave/:address", async (req, res) => {
   const { address } = req.params
-  if (!address.startsWith("0x") || address.length !== 42) {
+  if (!isValidAddress(address)) {
     return res.status(400).json({ error: "Invalid Celo address" })
   }
 
@@ -409,8 +468,8 @@ app.get("/api/v1/aave/:address", async (req, res) => {
       Get the Aave V3 position for address ${address}.`
     )
     try { res.json(JSON.parse(result)) } catch { res.json({ address, raw: result }) }
-  } catch (e: any) {
-    res.status(500).json({ error: e.message })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
   }
 })
 
@@ -418,27 +477,50 @@ app.get("/api/v1/aave/:address", async (req, res) => {
 app.get("/health", (_, res) => res.json({
   status:  "ok",
   agent:   "CeloBank Agent API v2.0.0",
-  wallet:  AGENT_ADDRESS,
+  wallet:  `${AGENT_ADDRESS.slice(0, 6)}...${AGENT_ADDRESS.slice(-4)}`,
   network: "Celo Mainnet (Chain ID: 42220)",
-  sdk:     "@celobank/agent-sdk@1.0.1",
-  mode:    "non-custodial (v2) + custodial fallback",
+  sdk:     "@celobank/agent-sdk@1.0.5",
+  mode:    "non-custodial (v2)",
+  tools:   19,
   docs:    "/docs",
   uptime:  Math.floor(process.uptime()),
 }))
 
-// ─── GET /mcp (8004scan health check) ───────────────────────────────────────
+// ─── MCP (Model Context Protocol) — 8004scan health check ────────────────────
+const MCP_TOOLS = [
+  { name: "get_balance",          description: "Get CELO balance of an address" },
+  { name: "get_portfolio",        description: "Get full portfolio: CELO + all token balances" },
+  { name: "get_celo_price",       description: "Get real-time CELO and token prices" },
+  { name: "get_multi_price",      description: "Get prices for multiple tokens with 24h change" },
+  { name: "send_celo",            description: "Send CELO to an address" },
+  { name: "swap_celo",            description: "Swap CELO for a stablecoin via Mento V2" },
+  { name: "swap_tokens",          description: "Universal swap: any token pair via Mento V2 or Uniswap V3" },
+  { name: "save_cusd",            description: "Supply cUSD/USDC to Aave V3 to earn yield" },
+  { name: "get_aave_position",    description: "Get Aave V3 lending position" },
+  { name: "stake_celo",           description: "Stake CELO to earn ~4% APY via stCELO" },
+  { name: "unstake_celo",         description: "Unstake stCELO back to CELO" },
+  { name: "get_staking_position", description: "Get CELO/stCELO staking position" },
+  { name: "get_yield_options",    description: "Get all yield options on Celo with APY and risk" },
+  { name: "trade_ideas",          description: "AI portfolio analysis and DeFi recommendations" },
+  { name: "get_market_overview",  description: "Real-time market overview for all Celo tokens" },
+  { name: "get_bridge_info",      description: "Bridge options to move tokens to/from Celo" },
+  { name: "get_dailydrop_status", description: "Check DailyDrop streak and Proof of Presence badge" },
+  { name: "launch_token",         description: "Deploy a new ERC20 token on Celo via TokenFactory" },
+  { name: "get_tokens",           description: "List all tokens launched via CeloBank TokenFactory" },
+]
+
 app.get("/mcp", (_, res) => res.json({
-  name: "CeloBank Agent",
-  version: "2.0.0",
-  description: "Non-custodial DeFi agent on Celo Mainnet",
-  tools: ["get_portfolio","get_prices","swap","save_aave","stake","send","trade_ideas","bridge_info","dailydrop_status"],
-  status: "healthy",
-  endpoint: "https://celobank-agent-production.up.railway.app",
+  name:        "CeloBank Agent",
+  version:     "2.0.0",
+  description: "Non-custodial AI DeFi agent on Celo Mainnet — 19 tools",
+  tools:       MCP_TOOLS.map(t => t.name),
+  status:      "healthy",
+  endpoint:    "https://celobank-agent-production.up.railway.app",
 }))
 
-// ─── POST /mcp (JSON-RPC for 8004scan) ───────────────────────────────────────
 app.post("/mcp", (req, res) => {
   const { method, id } = req.body || {}
+
   if (method === "initialize") {
     return res.json({
       jsonrpc: "2.0", id,
@@ -446,26 +528,30 @@ app.post("/mcp", (req, res) => {
         protocolVersion: "2024-11-05",
         serverInfo: { name: "CeloBank Agent", version: "2.0.0" },
         capabilities: { tools: {} },
-      }
+      },
     })
   }
+
   if (method === "tools/list") {
     return res.json({
       jsonrpc: "2.0", id,
-      result: { tools: [
-        { name: "get_portfolio",    description: "Get wallet portfolio on Celo" },
-        { name: "get_prices",       description: "Get real-time token prices" },
-        { name: "swap",             description: "Swap CELO to stablecoin via Mento V2" },
-        { name: "stake",            description: "Stake CELO for stCELO (~4% APY)" },
-        { name: "save_aave",        description: "Supply to Aave V3 (~3-5% APY)" },
-        { name: "send",             description: "Send CELO to any address" },
-        { name: "trade_ideas",      description: "AI trade recommendations" },
-        { name: "bridge_info",      description: "Bridge info (Squid, Jumper, Wormhole)" },
-        { name: "dailydrop_status", description: "DailyDrop streak status" },
-        { name: "daily_checkin",    description: "Daily check-in on DailyDrop" },
-      ]}
+      result: {
+        tools: MCP_TOOLS.map(t => ({
+          name:        t.name,
+          description: t.description,
+          inputSchema: { type: "object", properties: {} },
+        })),
+      },
     })
   }
+
+  if (method === "tools/call") {
+    return res.json({
+      jsonrpc: "2.0", id,
+      result: { content: [{ type: "text", text: "Use POST /api/v1/chat or POST /api/v1/prepare to invoke tools." }] },
+    })
+  }
+
   return res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
 })
 
@@ -473,7 +559,8 @@ app.listen(3000, () => {
   console.log("🚀 CeloBank Agent API v2.0.0")
   console.log("📍 http://localhost:3000")
   console.log("📚 Docs: http://localhost:3000/docs")
-  console.log(`💳 Agent Wallet: ${AGENT_ADDRESS}`)
+  console.log(`💳 Agent: ${AGENT_ADDRESS.slice(0, 6)}...${AGENT_ADDRESS.slice(-4)}`)
   console.log("🌐 Network: Celo Mainnet")
-  console.log("🔓 Non-custodial mode: POST /api/v1/prepare")
+  console.log("🔓 Non-custodial: POST /api/v1/prepare")
+  console.log("🔒 Rate limiting: chat=20/min, prepare=30/min")
 })

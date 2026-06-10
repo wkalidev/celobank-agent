@@ -466,7 +466,6 @@ export const swapTokensTool = tool(
 
       const tIn  = ALL_SWAP_TOKENS[symIn]
       const tOut = ALL_SWAP_TOKENS[symOut]
-      const { parseUnits } = await import("viem")
       const amountWei = parseUnits(amount, tIn.decimals)
 
       if (isMentoPair(tIn.address, tOut.address)) {
