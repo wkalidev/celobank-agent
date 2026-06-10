@@ -79,8 +79,44 @@ function detectMiniPay(): boolean {
   return !!((window as any).ethereum?.isMiniPay)
 }
 
+function parseSupply(raw: string): string {
+  const s = raw.replace(/,/g, "").trim()
+  const n = parseFloat(s)
+  if (isNaN(n)) return s
+  const suffix = s.slice(-1).toLowerCase()
+  if (suffix === "k") return String(Math.round(n * 1_000))
+  if (suffix === "m") return String(Math.round(n * 1_000_000))
+  if (suffix === "b") return String(Math.round(n * 1_000_000_000))
+  const millionMatch = s.match(/([\d.]+)\s*million/i)
+  if (millionMatch) return String(Math.round(parseFloat(millionMatch[1]) * 1_000_000))
+  return String(Math.round(n))
+}
+
 function detectDeFiAction(msg: string): { action: string; params: Record<string, string> } | null {
   const m = msg.toLowerCase().trim()
+
+  // Launch token: requires name, symbol, and supply all present in the message
+  // e.g. "launch a token called SunCoin symbol SUN supply 1000000"
+  //      "create token SunCoin SUN 1000000"
+  //      "deploy new token named GoldCoin ticker GLD 500000"
+  if (/(?:launch|create|deploy|lancer|créer)\s+(?:a\s+|new\s+|un\s+)?(?:new\s+)?token/i.test(msg)) {
+    const nameMatch  = msg.match(/(?:called|named|:\s*)([A-Za-z][A-Za-z0-9 ]{1,28}?)(?:\s*,|\s+symbol|\s+ticker|\s+sym\b|\s+supply|\s+total)/i)
+    const symbolMatch = msg.match(/(?:symbol|ticker|sym)[:\s]+([A-Za-z][A-Za-z0-9]{0,10})/i)
+    const supplyMatch = msg.match(/(?:supply|total(?:\s+supply)?)[:\s]+([\d,.]+[kmb]?(?:\s*million)?)/i)
+                     ?? msg.match(/([\d,.]+[kmb]?(?:\s*million)?)\s+(?:supply|tokens?)/i)
+
+    if (nameMatch && symbolMatch && supplyMatch) {
+      return {
+        action: "launch_token",
+        params: {
+          name:        nameMatch[1].trim(),
+          symbol:      symbolMatch[1].trim().toUpperCase(),
+          totalSupply: parseSupply(supplyMatch[1]),
+        },
+      }
+    }
+  }
+
   const swapMatch = m.match(/(?:swap|échange|swapper|échanger|convertir)\s+([\d.]+)\s+celo\s+(?:to|vers|contre|en|→|->)\s+(\w+)/i)
   if (swapMatch) return { action: "swap", params: { amount: swapMatch[1], tokenOut: swapMatch[2].toUpperCase() } }
   const saveMatch = m.match(/(?:save|épargner|déposer|deposit|supply)\s+([\d.]+)(?:\s+(\w+))?/i)
