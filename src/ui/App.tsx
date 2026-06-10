@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useConnect, useWalletClient, usePublicClient } from 'wagmi'
-import { sdk } from '@farcaster/frame-sdk'
+import { sdk } from '@farcaster/miniapp-sdk'
 import { encodeFunctionData, parseEther } from "viem"
 
 // ─── DailyDrop Constants ──────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ function detectMiniPay(): boolean {
 }
 
 function parseSupply(raw: string): string {
+  if (typeof raw !== 'string') return '0'
   const s = raw.replace(/,/g, "").trim()
   const n = parseFloat(s)
   if (isNaN(n)) return s
@@ -93,6 +94,7 @@ function parseSupply(raw: string): string {
 }
 
 function detectDeFiAction(msg: string): { action: string; params: Record<string, string> } | null {
+  if (typeof msg !== 'string') return null
   const m = msg.toLowerCase().trim()
 
   // Launch token: requires name, symbol, and supply all present in the message
@@ -495,6 +497,9 @@ export default function App() {
   const publicClientRef = useRef(publicClient)
   useEffect(() => { publicClientRef.current = publicClient }, [publicClient])
 
+  const walletClientRef = useRef(walletClient)
+  useEffect(() => { walletClientRef.current = walletClient }, [walletClient])
+
   const loadStreak = useCallback(async () => {
     if (!address || !publicClientRef.current) return
     try {
@@ -550,9 +555,11 @@ export default function App() {
   }, [address, walletClient, publicClient, streak])
 
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
-    console.log("[executePrepared] entered. action:", prepared.action, "txCount:", prepared.transactions.length, "address:", address, "hasWalletClient:", !!walletClient)
-    if (!address || !walletClient || !publicClient) {
-      console.warn("[executePrepared] aborting — wallet not ready. address:", address, "walletClient:", !!walletClient, "publicClient:", !!publicClient)
+    // Read walletClient from ref to get the latest value even if wagmi hasn't re-rendered yet
+    const wc = walletClientRef.current
+    console.log("[executePrepared] entered. action:", prepared.action, "txCount:", prepared.transactions.length, "address:", address, "hasWalletClient:", !!wc)
+    if (!address || !wc || !publicClient) {
+      console.warn("[executePrepared] aborting — wallet not ready. address:", address, "walletClient:", !!wc, "publicClient:", !!publicClient)
       return "❌ Wallet not connected. Please connect your wallet first."
     }
     if (!prepared.success || prepared.transactions.length === 0) {
@@ -564,7 +571,7 @@ export default function App() {
       for (let i = 0; i < prepared.transactions.length; i++) {
         const tx = prepared.transactions[i]
         console.log(`[executePrepared] sending tx ${i + 1}/${prepared.transactions.length}:`, tx.description, "to:", tx.to)
-        const hash = await walletClient.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address })
+        const hash = await wc.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address })
         console.log(`[executePrepared] tx ${i + 1} hash:`, hash)
         lastHash = hash
         if (i < prepared.transactions.length - 1) await publicClient.waitForTransactionReceipt({ hash })
@@ -576,7 +583,7 @@ export default function App() {
       if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Transaction cancelled."
       return `❌ Transaction failed: ${msg}`
     }
-  }, [address, walletClient, publicClient])
+  }, [address, publicClient])  // walletClient intentionally excluded — read via ref to get latest value
 
   useEffect(() => {
     async function initFarcaster() {
@@ -625,7 +632,7 @@ export default function App() {
 
   async function sendMessage(text?: string) {
     const msg = text || input
-    if (!msg.trim() || loading) return
+    if (typeof msg !== 'string' || !msg.trim() || loading) return
 
     if (msg === "__CHECKIN__") {
       setMessages(prev => [...prev, { role: "user", content: "Daily check-in", timestamp: new Date() }])
@@ -672,6 +679,10 @@ export default function App() {
         console.log("[sendMessage] prepare succeeded, transactions:", prepared.transactions.length)
         setMessages(prev => [...prev, { role: "agent", content: `> ${prepared.summary}\n> ${prepared.transactions.length} TX(s) to sign in your wallet...`, timestamp: new Date() }])
 
+        // Give wagmi 500ms to fully initialize walletClient after address detection
+        if (address && !walletClientRef.current) {
+          await new Promise<void>(resolve => setTimeout(resolve, 500))
+        }
         console.log("[sendMessage] calling executePrepared...")
         const result = await executePrepared(prepared)
         console.log("[sendMessage] executePrepared result:", result)
