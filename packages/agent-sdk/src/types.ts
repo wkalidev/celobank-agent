@@ -84,3 +84,25 @@ export interface GetPricesParams {
 export interface GetAavePositionParams {
   address?: `0x${string}`
 }
+
+export interface SwapTokensParams {
+  tokenIn?: string   // source token symbol (default: "CELO")
+  tokenOut: string   // destination token symbol
+  amount: string     // amount of tokenIn to swap
+}
+
+export interface LaunchTokenParams {
+  name: string         // full token name (e.g. "My Token")
+  symbol: string       // ticker symbol, max 11 chars (e.g. "MTK")
+  totalSupply: string  // total supply as a plain number string (e.g. "1000000")
+}
+
+export interface LaunchTokenResult {
+  success: boolean
+  name: string
+  symbol: string
+  totalSupply: string
+  tokenAddress: string
+  txHash: `0x${string}`
+  explorerUrl: string
+}

@@ -67,9 +67,10 @@ import { CeloBankSDK } from "@celobank/agent-sdk"
 const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
 
 const portfolio = await sdk.getPortfolio()
-const swap      = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
+const swap      = await sdk.swapTokens({ tokenIn: "CELO", tokenOut: "USDC", amount: "10" })
 const supply    = await sdk.supplyAave({ amount: "50" })
 const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
+const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalSupply: "1000000" })
 ```
 
 **→ npm package: [npmjs.com/package/@celobank/agent-sdk](https://www.npmjs.com/package/@celobank/agent-sdk)**
@@ -81,7 +82,9 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 | `getPortfolio(params?)` | Native CELO + all ERC20 balances for any address |
 | `getPrices(params?)` | Real-time USD prices + 24h change via CoinGecko |
 | `send(params)` | Send native CELO to any address |
-| `swap(params)` | Swap CELO → stablecoin via Mento V2 |
+| `swap(params)` | Swap CELO → stablecoin via Mento V2 (legacy) |
+| `swapTokens(params)` | Universal swap: Mento V2 or Uniswap V3 for 26+ token pairs |
+| `launchToken(params)` | Deploy a new ERC20 token on Celo via TokenFactory |
 | `getAavePosition(params?)` | Read Aave V3 position (collateral, debt, health factor) |
 | `supplyAave(params)` | Deposit asset on Aave V3 to earn yield |
 
@@ -94,7 +97,7 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 | 💬 **Natural Language** | Chat in 8 languages: FR, EN, ES, AR, SW, IT, PT, ZH |
 | 💸 **Send Money** | Transfer CELO instantly — user signs their own TX |
 | 📊 **Real-time Prices** | Live prices + 24h change for all Celo tokens |
-| 🔄 **Swap** | CELO ↔ cUSD/cEUR/cREAL/KESm/NGNm/GHSm/XOFm via Mento V2 |
+| 🔄 **Universal Swap** | 26+ tokens: Mento V2 (CELO ↔ stablecoins) + Uniswap V3 (all other pairs) |
 | 🏦 **Aave Savings** | Supply cUSD/USDC to Aave V3 — earn ~3-5% APY |
 | 🔒 **Staking** | Stake CELO → stCELO — earn ~4% APY (liquid, no lockup) |
 | 💡 **Trade Ideas** | AI portfolio analysis + personalized DeFi recommendations |
@@ -117,6 +120,7 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 | **TokenFactory** | [`0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e`](https://celoscan.io/address/0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e) | Celo Mainnet |
 | ERC-8004 Identity | [`0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1`](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1) | Celo Mainnet |
 | Mento V2 Broker | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` | Celo Mainnet |
+| Uniswap V3 Router | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` | Celo Mainnet |
 | Aave V3 Pool | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` | Celo Mainnet |
 | stCELO Manager | `0x0239b96D10a434a56CC9E09383077A0490cF9398` | Celo Mainnet |
 
@@ -153,6 +157,7 @@ GROQ_API_KEY=gsk_...              # From console.groq.com (free)
 | `/api/v1/portfolio/:address` | GET | Full wallet portfolio |
 | `/api/v1/prices` | GET | Real-time token prices |
 | `/api/v1/aave/:address` | GET | Aave V3 position |
+| `/api/v1/tokens` | GET | List all verified Celo tokens (88 from official token list) |
 | `/health` | GET | API status |
 | `/docs` | GET | Swagger UI |
 
@@ -173,7 +178,7 @@ POST /api/v1/prepare
 
 | Action | Required params | Description |
 |--------|-----------------|-------------|
-| `swap` | `amount`, `tokenOut` | Swap CELO → stablecoin via Mento V2 |
+| `swap` | `amount`, `tokenOut`, `tokenIn?` | Swap any token pair — Mento V2 or Uniswap V3 routing |
 | `supply_aave` | `amount`, `asset?` | Deposit to Aave V3 |
 | `send` | `to`, `amount` | Send CELO to an address |
 | `stake` | `amount` | Stake CELO → stCELO |
@@ -188,8 +193,13 @@ POST /api/v1/prepare
 ```
 👤 "swap 5 CELO to cUSD"
 🤖 > PREPARING TX... Action: SWAP
-   > Ready to swap 5 CELO → cUSD. Sign 2 transactions in your wallet.
+   > Ready to swap 5 CELO → cUSD via Mento V2. Sign 2 transactions in your wallet.
    ✅ TX signed by YOUR wallet: 0xABC...
+
+👤 "swap 10 cUSD to USDC"
+🤖 > PREPARING TX... Action: SWAP
+   > Ready to swap 10 cUSD → USDC via Uniswap V3 (0.3%). Sign 2 transactions.
+   ✅ TX signed by YOUR wallet: 0xDEF...
 
 👤 "stake 10 CELO"
 🤖 > Ready to stake 10 CELO → stCELO (~4% APY). Sign 1 transaction.

@@ -29,6 +29,13 @@ export const TOKENS = {
     USDm: { address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18, coingeckoId: "celo-dollar", name: "Mento USD" },
     COPm: { address: "0x8A567e2aE79CA692Bd748aB832081C45de4041eA", decimals: 18, coingeckoId: "mento-colombian-peso", name: "Mento Colombian Peso" },
     BRLm: { address: "0xe8537a3d056DA446677B9E9d6c5dB704EaAb4787", decimals: 18, coingeckoId: "celo-brazilian-real", name: "Mento Brazilian Real" },
+    // ── Uniswap V3 tokens ─────────────────────────────────────────────────────
+    WETH: { address: "0x66803FB87aBd4aaC3cbB3fAd7C3aa01f6F3FB207", decimals: 18, coingeckoId: "weth", name: "Wrapped Ether" },
+    WBTC: { address: "0xBAAB46E28388d2779e6E31Fd00cF0e5Ad95E327B", decimals: 8, coingeckoId: "wrapped-bitcoin", name: "Wrapped Bitcoin" },
+    stCELO: { address: "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24", decimals: 18, coingeckoId: "staked-celo", name: "Staked Celo" },
+    UBE: { address: "0x00Be915B9dCf56a3CBE739D9B9c202ca692409EC", decimals: 18, coingeckoId: "ubeswap", name: "Ubeswap" },
+    USDGLO: { address: "0x4f604735c1cf31399c6e711d5962b2b3e0225ad3", decimals: 18, coingeckoId: "glo-dollar", name: "Glo Dollar" },
+    EURC: { address: "0xBddC3554269053544bE0d6d027a73271225E9859", decimals: 6, coingeckoId: "euro-coin", name: "Euro Coin" },
 };
 // ─── Mento V2 ─────────────────────────────────────────────────────────────────
 export const MENTO_BROKER = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD";
@@ -49,6 +56,11 @@ export const MENTO_EXCHANGE_IDS = {
     "CELO-JPYm": "0xb171f3f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
     "CELO-COPm": "0xc282a4a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
 };
+// ─── Uniswap V3 ───────────────────────────────────────────────────────────────
+export const UNISWAP_V3_ROUTER = "0x5615CDAb10dc425a742d643d949a7F474C01abc4";
+export const UNISWAP_V3_FEE = 3000;
+// ─── Token Factory ────────────────────────────────────────────────────────────
+export const TOKEN_FACTORY = "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e";
 // ─── Aave V3 ──────────────────────────────────────────────────────────────────
 export const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6";
 // ─── ERC-8004 Identity Registry ───────────────────────────────────────────────

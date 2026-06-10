@@ -65,4 +65,23 @@ export interface GetPricesParams {
 export interface GetAavePositionParams {
     address?: `0x${string}`;
 }
+export interface SwapTokensParams {
+    tokenIn?: string;
+    tokenOut: string;
+    amount: string;
+}
+export interface LaunchTokenParams {
+    name: string;
+    symbol: string;
+    totalSupply: string;
+}
+export interface LaunchTokenResult {
+    success: boolean;
+    name: string;
+    symbol: string;
+    totalSupply: string;
+    tokenAddress: string;
+    txHash: `0x${string}`;
+    explorerUrl: string;
+}
 //# sourceMappingURL=types.d.ts.map

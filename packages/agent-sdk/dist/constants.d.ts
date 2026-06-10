@@ -145,11 +145,50 @@ export declare const TOKENS: {
         readonly coingeckoId: "celo-brazilian-real";
         readonly name: "Mento Brazilian Real";
     };
+    readonly WETH: {
+        readonly address: `0x${string}`;
+        readonly decimals: 18;
+        readonly coingeckoId: "weth";
+        readonly name: "Wrapped Ether";
+    };
+    readonly WBTC: {
+        readonly address: `0x${string}`;
+        readonly decimals: 8;
+        readonly coingeckoId: "wrapped-bitcoin";
+        readonly name: "Wrapped Bitcoin";
+    };
+    readonly stCELO: {
+        readonly address: `0x${string}`;
+        readonly decimals: 18;
+        readonly coingeckoId: "staked-celo";
+        readonly name: "Staked Celo";
+    };
+    readonly UBE: {
+        readonly address: `0x${string}`;
+        readonly decimals: 18;
+        readonly coingeckoId: "ubeswap";
+        readonly name: "Ubeswap";
+    };
+    readonly USDGLO: {
+        readonly address: `0x${string}`;
+        readonly decimals: 18;
+        readonly coingeckoId: "glo-dollar";
+        readonly name: "Glo Dollar";
+    };
+    readonly EURC: {
+        readonly address: `0x${string}`;
+        readonly decimals: 6;
+        readonly coingeckoId: "euro-coin";
+        readonly name: "Euro Coin";
+    };
 };
 export type TokenSymbol = keyof typeof TOKENS;
 export declare const MENTO_BROKER: `0x${string}`;
 export declare const MENTO_BI_POOL_MANAGER: `0x${string}`;
 export declare const MENTO_EXCHANGE_IDS: Record<string, `0x${string}`>;
+export declare const UNISWAP_V3_ROUTER: `0x${string}`;
+export declare const UNISWAP_V3_FEE = 3000;
+export declare const TOKEN_FACTORY: `0x${string}`;
 export declare const AAVE_POOL: `0x${string}`;
 export declare const ERC8004_REGISTRY: `0x${string}`;
 export declare const TOKENS_BY_REGION: {

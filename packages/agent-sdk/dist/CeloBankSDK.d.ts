@@ -1,4 +1,4 @@
-import type { CeloBankConfig, BalanceResult, PriceResult, SwapResult, SendResult, AavePosition, AaveSupplyResult, SendParams, SwapParams, SupplyAaveParams, GetPortfolioParams, GetPricesParams, GetAavePositionParams } from "./types.js";
+import type { CeloBankConfig, BalanceResult, PriceResult, SwapResult, SendResult, AavePosition, AaveSupplyResult, SendParams, SwapParams, SwapTokensParams, SupplyAaveParams, GetPortfolioParams, GetPricesParams, GetAavePositionParams, LaunchTokenParams, LaunchTokenResult } from "./types.js";
 export interface StreakResult {
     address: string;
     streak: number;
@@ -68,6 +68,14 @@ export declare class CeloBankSDK {
      * Déposer sur Aave V3 pour générer des intérêts
      */
     supplyAave(params: SupplyAaveParams): Promise<AaveSupplyResult>;
+    /**
+     * Universal swap: routes CELO↔stablecoin via Mento V2, all other pairs via Uniswap V3
+     */
+    swapTokens(params: SwapTokensParams): Promise<SwapResult>;
+    /**
+     * Deploy a new ERC20 token on Celo via TokenFactory
+     */
+    launchToken(params: LaunchTokenParams): Promise<LaunchTokenResult>;
     /**
      * Lire le streak DailyDrop d'une adresse
      * @example

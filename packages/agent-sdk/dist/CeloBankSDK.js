@@ -1,7 +1,69 @@
 import { createPublicClient, createWalletClient, http, parseEther, formatEther, formatUnits, parseUnits, defineChain, } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { TOKENS, MENTO_BROKER, MENTO_BI_POOL_MANAGER, MENTO_EXCHANGE_IDS, AAVE_POOL, CELO_RPC_DEFAULT, } from "./constants.js";
+import { TOKENS, MENTO_BROKER, MENTO_BI_POOL_MANAGER, MENTO_EXCHANGE_IDS, UNISWAP_V3_ROUTER, UNISWAP_V3_FEE, TOKEN_FACTORY, AAVE_POOL, CELO_RPC_DEFAULT, } from "./constants.js";
 import { ERC20_ABI, BROKER_ABI, AAVE_POOL_ABI } from "./abis.js";
+// ─── Uniswap V3 Router ABI ────────────────────────────────────────────────────
+const UNISWAP_V3_ROUTER_ABI = [
+    {
+        name: "exactInputSingle",
+        type: "function",
+        inputs: [{ name: "params", type: "tuple", components: [
+                    { name: "tokenIn", type: "address" },
+                    { name: "tokenOut", type: "address" },
+                    { name: "fee", type: "uint24" },
+                    { name: "recipient", type: "address" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "amountIn", type: "uint256" },
+                    { name: "amountOutMinimum", type: "uint256" },
+                    { name: "sqrtPriceLimitX96", type: "uint160" },
+                ] }],
+        outputs: [{ name: "amountOut", type: "uint256" }],
+        stateMutability: "payable",
+    },
+];
+// ─── Token Factory ABI ────────────────────────────────────────────────────────
+const TOKEN_FACTORY_ABI = [
+    {
+        name: "createToken",
+        type: "function",
+        inputs: [
+            { name: "name_", type: "string" },
+            { name: "symbol_", type: "string" },
+            { name: "totalSupply_", type: "uint256" },
+        ],
+        outputs: [{ name: "tokenAddress", type: "address" }],
+        stateMutability: "nonpayable",
+    },
+];
+// ─── Mento stablecoin addresses for routing ───────────────────────────────────
+const MENTO_STABLECOIN_ADDRS = new Set([
+    "0x765de816845861e75a25fca122bb6898b8b1282a", // cUSD / USDm
+    "0xd8763cba276a3738e6de85b4b3bf5fded6d6ca73", // cEUR / EURm
+    "0xe8537a3d056da446677b9e9d6c5db704eaab4787", // cREAL / BRLm
+    "0x456a3d042c0dbd3db53d5489e98dfb038553b0d0", // KESm
+    "0xe2702bd97ee33c88c8f6f92da3b733608aa76f71", // NGNm
+    "0xfaea5f3404bba20d3cc2f8c4b0a888f55a3c7313", // GHSm
+    "0x73f93dcc49cb8a239e2032663e9475dd5ef29a08", // XOFm
+    "0x4c35853a3b4e647fd266f4de678dcc8fec410bf6", // ZARm
+    "0xccf663b1ff11028f0b19058d0f7b674004a40746", // GBPm
+    "0x105d4a9306d2e55a71d2eb95b81553ae1dc20d7b", // PHPm
+    "0x8a567e2ae79ca692bd748ab832081c45de4041ea", // COPm
+    "0xff4ab19391af240c311c54200a492233052b6325", // CADm
+    "0x7175504c455076f15c04a2f90a8e352281f492f9", // AUDm
+    "0xb55a79f398e759e43c95b979163f30ec87ee131d", // CHFm
+    "0xc45ecf20f3cd864b32d9794d6f76814ae8892e20", // JPYm
+]);
+function isMentoPair(tokenInAddr, tokenOutAddr) {
+    const celoAddr = TOKENS.CELO.address.toLowerCase();
+    const a = tokenInAddr.toLowerCase();
+    const b = tokenOutAddr.toLowerCase();
+    return (a === celoAddr && MENTO_STABLECOIN_ADDRS.has(b)) ||
+        (b === celoAddr && MENTO_STABLECOIN_ADDRS.has(a));
+}
+function findToken(symbol) {
+    const key = Object.keys(TOKENS).find(k => k.toLowerCase() === symbol.toLowerCase());
+    return key ? { sym: key, ...TOKENS[key] } : null;
+}
 const celoMainnet = defineChain({
     id: 42220,
     name: "Celo Mainnet",
@@ -192,6 +254,70 @@ export class CeloBankSDK {
         return {
             success: true, asset: assetSymbol, amount: params.amount,
             txHash, explorerUrl: `https://celoscan.io/tx/${txHash}`,
+        };
+    }
+    /**
+     * Universal swap: routes CELO↔stablecoin via Mento V2, all other pairs via Uniswap V3
+     */
+    async swapTokens(params) {
+        const inToken = findToken(params.tokenIn ?? "CELO");
+        const outToken = findToken(params.tokenOut);
+        if (!inToken)
+            throw new Error(`Token "${params.tokenIn ?? "CELO"}" not supported`);
+        if (!outToken)
+            throw new Error(`Token "${params.tokenOut}" not supported`);
+        const amountWei = parseUnits(params.amount, inToken.decimals);
+        const useMento = isMentoPair(inToken.address, outToken.address);
+        const spender = useMento ? MENTO_BROKER : UNISWAP_V3_ROUTER;
+        const approveHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: inToken.address, abi: ERC20_ABI,
+            functionName: "approve", args: [spender, amountWei],
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
+        if (useMento) {
+            const stableToken = inToken.sym === "CELO" ? outToken : inToken;
+            const exchangeId = await this._getExchangeId(stableToken.address);
+            if (!exchangeId)
+                throw new Error(`No Mento V2 pool for ${inToken.sym}→${outToken.sym}`);
+            const txHash = await this.walletClient.writeContract({
+                account: this.account, chain: celoMainnet,
+                address: MENTO_BROKER, abi: BROKER_ABI,
+                functionName: "swapIn",
+                args: [MENTO_BI_POOL_MANAGER, exchangeId, inToken.address, outToken.address, amountWei, 0n],
+            });
+            return { success: true, amountIn: params.amount, tokenOut: outToken.sym, txHash, explorerUrl: `https://celoscan.io/tx/${txHash}` };
+        }
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
+        const txHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: UNISWAP_V3_ROUTER, abi: UNISWAP_V3_ROUTER_ABI,
+            functionName: "exactInputSingle",
+            args: [{
+                    tokenIn: inToken.address, tokenOut: outToken.address,
+                    fee: UNISWAP_V3_FEE, recipient: this.address, deadline,
+                    amountIn: amountWei, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n,
+                }],
+        });
+        return { success: true, amountIn: params.amount, tokenOut: outToken.sym, txHash, explorerUrl: `https://celoscan.io/tx/${txHash}` };
+    }
+    /**
+     * Deploy a new ERC20 token on Celo via TokenFactory
+     */
+    async launchToken(params) {
+        const totalSupplyWei = parseUnits(params.totalSupply, 18);
+        const txHash = await this.walletClient.writeContract({
+            account: this.account, chain: celoMainnet,
+            address: TOKEN_FACTORY, abi: TOKEN_FACTORY_ABI,
+            functionName: "createToken",
+            args: [params.name, params.symbol, totalSupplyWei],
+        });
+        const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+        const tokenAddress = (receipt.logs?.[0]?.address ?? "");
+        return {
+            success: true, name: params.name, symbol: params.symbol,
+            totalSupply: params.totalSupply, tokenAddress, txHash,
+            explorerUrl: `https://celoscan.io/tx/${txHash}`,
         };
     }
     // ─── DailyDrop Methods ──────────────────────────────────────────────────────

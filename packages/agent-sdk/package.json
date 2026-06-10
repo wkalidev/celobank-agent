@@ -1,6 +1,6 @@
 {
   "name": "@celobank/agent-sdk",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Infrastructure SDK for building autonomous DeFi agents on Celo",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
