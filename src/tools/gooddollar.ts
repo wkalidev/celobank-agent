@@ -37,13 +37,22 @@ const IDENTITY_ABI = [
 
 const ENGAGEMENT_ABI = [
   {
-    name: "getAppRewards",
+    name: "appsStats",
     type: "function",
-    inputs: [{ name: "_app", type: "address" }],
+    inputs: [{ name: "", type: "address" }],
     outputs: [
-      { name: "total", type: "uint256" },
-      { name: "count", type: "uint256" },
+      { name: "numberOfRewards",    type: "uint96" },
+      { name: "totalAppRewards",    type: "uint96" },
+      { name: "totalUserRewards",   type: "uint96" },
+      { name: "totalInviterRewards", type: "uint96" },
     ],
+    stateMutability: "view",
+  },
+  {
+    name: "rewardAmount",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint96" }],
     stateMutability: "view",
   },
 ] as const
@@ -84,20 +93,30 @@ async function getEngagementRewards(appAddress?: string): Promise<string> {
   ) as `0x${string}`
 
   try {
-    const result = await publicClient.readContract({
-      address: ENGAGEMENT_REWARDS,
-      abi: ENGAGEMENT_ABI,
-      functionName: "getAppRewards",
-      args: [appAddr],
-    }) as [bigint, bigint]
+    const [stats, rewardAmt] = await Promise.all([
+      publicClient.readContract({
+        address: ENGAGEMENT_REWARDS,
+        abi: ENGAGEMENT_ABI,
+        functionName: "appsStats",
+        args: [appAddr],
+      }) as Promise<[bigint, bigint, bigint, bigint]>,
+      publicClient.readContract({
+        address: ENGAGEMENT_REWARDS,
+        abi: ENGAGEMENT_ABI,
+        functionName: "rewardAmount",
+      }) as Promise<bigint>,
+    ])
 
-    const [total, count] = result
-    const totalG = parseFloat(formatUnits(total, 18)).toFixed(2)
+    const [numberOfRewards, totalApp, totalUser, totalInviter] = stats
+    const perReward = parseFloat(formatUnits(rewardAmt, 18)).toFixed(4)
+    const totalDist = parseFloat(formatUnits(totalApp, 18)).toFixed(2)
 
     return `🎁 CeloBank × GoodDollar Engagement Rewards:
-> Total G$ Distributed: ${totalG} G$
-> Users Onboarded: ${count.toString()}
-> Reward Rate: $0.50 G$ per new verified user
+> Users Onboarded: ${numberOfRewards.toString()}
+> Total G$ Distributed: ${totalDist} G$
+>   └ To Users: ${parseFloat(formatUnits(totalUser, 18)).toFixed(2)} G$
+>   └ To Inviters: ${parseFloat(formatUnits(totalInviter, 18)).toFixed(2)} G$
+> Reward per New User: ${perReward} G$ (~$0.50)
 > Contract: https://celoscan.io/address/${ENGAGEMENT_REWARDS}
 
 💡 Share CeloBank with friends. Every new verified user you bring earns you G$ rewards.`

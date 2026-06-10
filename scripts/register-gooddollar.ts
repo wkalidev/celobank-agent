@@ -24,15 +24,36 @@ const APPLY_APP_ABI = [
     name: "applyApp",
     type: "function",
     inputs: [
-      { name: "_app",         type: "address" },
-      { name: "_receiver",    type: "address" },
-      { name: "_rewardPct",   type: "uint256" },
-      { name: "_description", type: "string"  },
-      { name: "_url",         type: "string"  },
-      { name: "_contact",     type: "string"  },
+      { name: "app",                    type: "address" },
+      { name: "rewardReceiver",         type: "address" },
+      { name: "userAndInviterPercentage", type: "uint8"   },
+      { name: "userPercentage",         type: "uint8"   },
+      { name: "description",            type: "string"  },
+      { name: "url",                    type: "string"  },
+      { name: "email",                  type: "string"  },
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    name: "registeredApps",
+    type: "function",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [
+      { name: "owner",                  type: "address" },
+      { name: "rewardReceiver",         type: "address" },
+      { name: "totalRewardsClaimed",    type: "uint96"  },
+      { name: "registeredAt",           type: "uint32"  },
+      { name: "lastResetAt",            type: "uint32"  },
+      { name: "userAndInviterPercentage", type: "uint8" },
+      { name: "userPercentage",         type: "uint8"   },
+      { name: "isRegistered",           type: "bool"    },
+      { name: "isApproved",             type: "bool"    },
+      { name: "description",            type: "string"  },
+      { name: "url",                    type: "string"  },
+      { name: "email",                  type: "string"  },
+    ],
+    stateMutability: "view",
   },
 ] as const
 
@@ -49,14 +70,30 @@ async function main() {
   console.log(`   Contract: ${ENGAGEMENT_REWARDS}`)
   console.log(`   Network: Celo Mainnet (42220)\n`)
 
+  // Check if already registered
+  const existing = await publicClient.readContract({
+    address: ENGAGEMENT_REWARDS,
+    abi: APPLY_APP_ABI,
+    functionName: "registeredApps",
+    args: [account.address],
+  }) as { isRegistered: boolean; isApproved: boolean; description: string }
+
+  if (existing.isRegistered) {
+    console.log(`ℹ️  Already registered!`)
+    console.log(`   Approved: ${existing.isApproved ? "✅ Yes" : "⏳ Pending GoodDollar approval"}`)
+    console.log(`   Description: ${existing.description}`)
+    process.exit(0)
+  }
+
   const { request } = await publicClient.simulateContract({
     address: ENGAGEMENT_REWARDS,
     abi: APPLY_APP_ABI,
     functionName: "applyApp",
     args: [
-      account.address,  // _app: CeloBank's agent wallet
-      account.address,  // _receiver: wallet to receive reward share
-      80n,              // _rewardPct: 80% to users, 20% to platform
+      account.address,  // app: CeloBank's agent wallet
+      account.address,  // rewardReceiver: same wallet receives reward share
+      80,               // userAndInviterPercentage: 80% split between user+inviter
+      60,               // userPercentage: 60% of that 80% to user, 40% to inviter
       "CeloBank Agent — Non-custodial AI DeFi agent on Celo. Built for GoodBuilders Season 4.",
       "https://celobank-agent-production.up.railway.app",
       "wkalidev@gmail.com",
