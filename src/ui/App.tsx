@@ -107,6 +107,7 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
     const symbolMatch = msg.match(/(?:symbol|ticker|sym)[:\s]+([A-Za-z][A-Za-z0-9]{0,10})/i)
     const supplyMatch = msg.match(/(?:supply|total(?:\s+supply)?)[:\s]+([\d,.]+[kmb]?(?:\s*million)?)/i)
                      ?? msg.match(/([\d,.]+[kmb]?(?:\s*million)?)\s+(?:supply|tokens?)/i)
+    console.log("[detectDeFiAction] launch intent detected. nameMatch:", nameMatch?.[1], "symbolMatch:", symbolMatch?.[1], "supplyMatch:", supplyMatch?.[1])
     if (nameMatch && symbolMatch && supplyMatch) {
       return {
         action: "launch_token",
@@ -117,6 +118,7 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
         },
       }
     }
+    console.log("[detectDeFiAction] launch intent but params incomplete — falling through to AI chat")
     return null  // launch intent but params incomplete — let the AI agent ask for details
   }
 
@@ -548,19 +550,29 @@ export default function App() {
   }, [address, walletClient, publicClient, streak])
 
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
-    if (!address || !walletClient || !publicClient) return "❌ Wallet not connected. Please connect your wallet first."
-    if (!prepared.success || prepared.transactions.length === 0) return `❌ ${prepared.error ?? "No transactions to execute"}`
+    console.log("[executePrepared] entered. action:", prepared.action, "txCount:", prepared.transactions.length, "address:", address, "hasWalletClient:", !!walletClient)
+    if (!address || !walletClient || !publicClient) {
+      console.warn("[executePrepared] aborting — wallet not ready. address:", address, "walletClient:", !!walletClient, "publicClient:", !!publicClient)
+      return "❌ Wallet not connected. Please connect your wallet first."
+    }
+    if (!prepared.success || prepared.transactions.length === 0) {
+      console.warn("[executePrepared] aborting — no transactions. success:", prepared.success, "txCount:", prepared.transactions.length)
+      return `❌ ${prepared.error ?? "No transactions to execute"}`
+    }
     let lastHash = ""
     try {
       for (let i = 0; i < prepared.transactions.length; i++) {
         const tx = prepared.transactions[i]
+        console.log(`[executePrepared] sending tx ${i + 1}/${prepared.transactions.length}:`, tx.description, "to:", tx.to)
         const hash = await walletClient.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address })
+        console.log(`[executePrepared] tx ${i + 1} hash:`, hash)
         lastHash = hash
         if (i < prepared.transactions.length - 1) await publicClient.waitForTransactionReceipt({ hash })
       }
       return `✅ ${prepared.summary}\n> TX: https://celoscan.io/tx/${lastHash}\n> Signed by: ${address.slice(0, 6)}...${address.slice(-4)}`
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
+      console.error("[executePrepared] error:", msg)
       if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Transaction cancelled."
       return `❌ Transaction failed: ${msg}`
     }
@@ -635,20 +647,43 @@ export default function App() {
       const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
       const defiAction = address ? detectDeFiAction(msg) : null
 
+      console.log("[sendMessage] msg:", msg)
+      console.log("[sendMessage] address:", address)
+      console.log("[sendMessage] detectDeFiAction result:", defiAction)
+
       if (defiAction && address) {
+        console.log("[sendMessage] defiAction detected:", defiAction.action, defiAction.params)
         setMessages(prev => [...prev, { role: "agent", content: `> PREPARING TX...\n> Action: ${defiAction.action.toUpperCase()}\n> Params: ${JSON.stringify(defiAction.params)}\n> Waiting for wallet signature...`, timestamp: new Date() }])
-        const prepareRes = await fetch(`${API_URL}/api/v1/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: defiAction.action, userAddress: address, params: defiAction.params }) })
+
+        const prepareBody = { action: defiAction.action, userAddress: address, params: defiAction.params }
+        console.log("[sendMessage] calling /api/v1/prepare with:", prepareBody)
+        const prepareRes = await fetch(`${API_URL}/api/v1/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prepareBody) })
+        console.log("[sendMessage] prepare HTTP status:", prepareRes.status)
+
         const prepared: PrepareResult = await prepareRes.json()
-        if (!prepared.success) { setMessages(prev => [...prev, { role: "agent", content: `❌ Error: ${prepared.error}`, timestamp: new Date() }]); return }
+        console.log("[sendMessage] prepare response:", prepared)
+
+        if (!prepared.success) {
+          console.warn("[sendMessage] prepare failed:", prepared.error)
+          setMessages(prev => [...prev, { role: "agent", content: `❌ Error: ${prepared.error}`, timestamp: new Date() }])
+          return
+        }
+
+        console.log("[sendMessage] prepare succeeded, transactions:", prepared.transactions.length)
         setMessages(prev => [...prev, { role: "agent", content: `> ${prepared.summary}\n> ${prepared.transactions.length} TX(s) to sign in your wallet...`, timestamp: new Date() }])
+
+        console.log("[sendMessage] calling executePrepared...")
         const result = await executePrepared(prepared)
+        console.log("[sendMessage] executePrepared result:", result)
         setMessages(prev => [...prev, { role: "agent", content: result, timestamp: new Date() }])
       } else {
-        const res = await fetch(`${API_URL}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }) })
+        console.log("[sendMessage] no defiAction (or no address) — routing to AI chat. address:", address, "defiAction:", defiAction)
+        const res = await fetch(`${API_URL}/api/v1/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }) })
         const data = await res.json()
         setMessages(prev => [...prev, { role: "agent", content: data.response || data.error, timestamp: new Date() }])
       }
-    } catch {
+    } catch (err) {
+      console.error("[sendMessage] caught error:", err)
       setMessages(prev => [...prev, { role: "agent", content: "ERR_CONNECTION_FAILED: Cannot reach server.", timestamp: new Date() }])
     } finally { setLoading(false) }
   }
