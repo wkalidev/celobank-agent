@@ -5,19 +5,12 @@ import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
-import { createThirdwebClient } from "thirdweb"
-import { settlePayment, facilitator } from "thirdweb/x402"
-import { celo } from "thirdweb/chains"
-
 const app = express()
 app.use(cors())
 app.use(express.json())
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
 const AGENT_ADDRESS = account.address
-
-const thirdwebClient = createThirdwebClient({ secretKey: process.env.THIRDWEB_SECRET_KEY! })
-const thirdwebFacilitator = facilitator({ client: thirdwebClient, serverWalletAddress: AGENT_ADDRESS })
 
 // ─── Language Detection ───────────────────────────────────────────────────────
 function detectLanguage(text: string): string {
@@ -241,22 +234,6 @@ app.get("/api/v1/openapi.json", (_, res) => res.json(openApiSpec))
 
 // ─── POST /api/v1/chat — Agent IA ─────────────────────────────────────────────
 app.post("/api/v1/chat", async (req, res) => {
-  // x402 payment gate — 0.003 CELO per request
-  const paymentData = req.headers["x-payment"] as string | undefined
-  const paymentResult = await settlePayment({
-    resourceUrl: "https://celobank-agent-production.up.railway.app/api/v1/chat",
-    method: "POST",
-    paymentData,
-    payTo: "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357",
-    network: celo,
-    price: { amount: "1000000000000000", asset: { address: "0x765DE816845861e75A25fCA122bb6898B8B1282a" } },
-    facilitator: thirdwebFacilitator,
-  })
-  if (paymentResult.status !== 200) {
-    Object.entries(paymentResult.responseHeaders ?? {}).forEach(([k, v]) => res.setHeader(k, v as string))
-    return res.status(paymentResult.status).json(paymentResult.responseBody)
-  }
-
   const { message, userAddress } = req.body
   if (!message) return res.status(400).json({ error: "message is required" })
 

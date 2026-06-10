@@ -105,7 +105,7 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
   // Never fall through to supply_aave — "supply" in "1000000 supply" is a launch param, not a deposit.
   const isLaunchIntent = /(?:launch|create|deploy|lancer|créer)/i.test(msg) && /\btoken\b/i.test(msg)
   if (isLaunchIntent) {
-    const nameMatch   = msg.match(/(?:called|named|:\s*)([A-Za-z][A-Za-z0-9 ]{1,28}?)(?:\s*,|\s+symbol|\s+ticker|\s+sym\b|\s+supply|\s+total)/i)
+    const nameMatch   = msg.match(/(?:(?:called|named|appelé|nommé)\s+|:\s*)([A-Za-z][A-Za-z0-9 ]{1,28}?)(?:\s*,|\s+symbol|\s+ticker|\s+sym\b|\s+supply|\s+total)/i)
     const symbolMatch = msg.match(/(?:symbol|ticker|sym)[:\s]+([A-Za-z][A-Za-z0-9]{0,10})/i)
     const supplyMatch = msg.match(/(?:supply|total(?:\s+supply)?)[:\s]+([\d,.]+[kmb]?(?:\s*million)?)/i)
                      ?? msg.match(/([\d,.]+[kmb]?(?:\s*million)?)\s+(?:supply|tokens?)/i)
