@@ -32,3 +32,6 @@
 src/generateKeys.ts
 src/signChallenge.ts
 src/ui/dist/
+.agents/
+.claude/
+skills-lock.json
