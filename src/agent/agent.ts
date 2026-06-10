@@ -4,6 +4,7 @@ import {
   getAavePositionTool,
   saveCUSDTool,
   swapCeloTool,
+  swapTokensTool,
   getPortfolioTool,
   getMultiPriceTool,
 } from "../tools/defi.js"
@@ -34,6 +35,7 @@ const tools = {
   get_multi_price:      getMultiPriceTool,
   // ── DeFi ──────────────────────────────────────────────
   swap_celo:            swapCeloTool,
+  swap_tokens:          swapTokensTool,
   get_aave_position:    getAavePositionTool,
   save_cusd:            saveCUSDTool,
   // ── Staking ───────────────────────────────────────────
@@ -54,6 +56,7 @@ const tools = {
 
 const DIRECT_RETURN_TOOLS = new Set([
   "swap_celo",
+  "swap_tokens",
   "save_cusd",
   "send_celo",
   "get_celo_price",
@@ -133,6 +136,22 @@ const toolSchemas = [
         properties: {
           amount:   { type: "string", description: "Amount of CELO to swap" },
           tokenOut: { type: "string", description: "Target token: cUSD, cEUR, cREAL, USDC, USDT" },
+        },
+        required: ["amount", "tokenOut"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "swap_tokens",
+      description: "Swap ANY token pair on Celo mainnet. Routes CELO↔stablecoins through Mento V2, all other pairs through Uniswap V3 (0.3% fee). Supports: CELO, cUSD/USDm, cEUR/EURm, cREAL/BRLm, KESm, NGNm, GHSm, XOFm, ZARm, GBPm, PHPm, COPm, CADm, AUDm, CHFm, JPYm, USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC.",
+      parameters: {
+        type: "object",
+        properties: {
+          amount:   { type: "string", description: "Amount of tokenIn to swap" },
+          tokenIn:  { type: "string", description: "Source token symbol (default: CELO)" },
+          tokenOut: { type: "string", description: "Destination token symbol" },
         },
         required: ["amount", "tokenOut"],
       },
@@ -304,7 +323,10 @@ const SYSTEM_PROMPT = `You are CeloBank Agent — an advanced autonomous DeFi as
 
 You can help users with:
 - 💼 PORTFOLIO: Check balances, token holdings, net worth
-- 💱 SWAP: Swap CELO ↔ cUSD/cEUR/cREAL/USDC/USDT via Mento V2
+- 💱 SWAP: Swap ANY token pair on Celo mainnet
+    • CELO ↔ Mento stablecoins via Mento V2: cUSD/USDm, cEUR/EURm, cREAL/BRLm, KESm, NGNm, GHSm, XOFm, ZARm, GBPm, PHPm, COPm, CADm, AUDm, CHFm, JPYm
+    • All other pairs via Uniswap V3 (0.3%): USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC + more
+    • Use swap_tokens for universal routing; use swap_celo for legacy CELO→stablecoin
 - 🔒 STAKING: Stake CELO for ~4% APY via Staked CELO (stCELO)
 - 📈 AAVE: Supply cUSD/USDC to Aave V3 for yield (~3-5% APY)
 - 💡 TRADE IDEAS: Personalized portfolio analysis and DeFi recommendations
@@ -318,6 +340,7 @@ Always:
 - Show transaction hashes and explorer links when available
 - Suggest the next best action after completing one
 - Detect language and respond accordingly
+- For any swap request, prefer swap_tokens over swap_celo as it supports all pairs
 
 You support: English, French, Spanish, Portuguese, Swahili, Arabic, Italian, Chinese.`
 

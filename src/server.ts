@@ -291,7 +291,7 @@ app.post("/api/v1/prepare", async (req, res) => {
 
     switch (action) {
       case "swap":
-        result = await prepareSwap(userAddress, params.amount, params.tokenOut)
+        result = await prepareSwap(userAddress, params.amount, params.tokenOut, params.tokenIn ?? "CELO")
         break
 
       case "supply_aave":
@@ -372,6 +372,24 @@ app.get("/api/v1/prices", async (req, res) => {
     })
 
     res.json({ prices, updatedAt: new Date().toISOString() })
+  } catch (e: any) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── GET /api/v1/tokens — Official Celo token list (chainId 42220) ───────────
+app.get("/api/v1/tokens", async (_req, res) => {
+  try {
+    const upstream = await fetch("https://celo-org.github.io/celo-token-list/celo.tokenlist.json")
+    const data = await upstream.json() as { tokens: Array<{ chainId: number; address: string; symbol: string; name: string; decimals: number; logoURI?: string }> }
+    const tokens = data.tokens.filter(t => t.chainId === 42220).map(t => ({
+      symbol:   t.symbol,
+      name:     t.name,
+      address:  t.address,
+      decimals: t.decimals,
+      logoURI:  t.logoURI,
+    }))
+    res.json({ count: tokens.length, tokens, source: "https://celo-org.github.io/celo-token-list/celo.tokenlist.json" })
   } catch (e: any) {
     res.status(500).json({ error: e.message })
   }

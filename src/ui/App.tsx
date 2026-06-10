@@ -124,8 +124,8 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
     return null  // launch intent but params incomplete — let the AI agent ask for details
   }
 
-  const swapMatch = m.match(/(?:swap|échange|swapper|échanger|convertir)\s+([\d.]+)\s+celo\s+(?:to|vers|contre|en|→|->)\s+(\w+)/i)
-  if (swapMatch) return { action: "swap", params: { amount: swapMatch[1], tokenOut: swapMatch[2].toUpperCase() } }
+  const swapMatch = m.match(/(?:swap|échange|swapper|échanger|convertir)\s+([\d.]+)\s+(\w+)\s+(?:to|vers|contre|en|→|->)\s+(\w+)/i)
+  if (swapMatch) return { action: "swap", params: { amount: swapMatch[1], tokenIn: swapMatch[2].toUpperCase(), tokenOut: swapMatch[3].toUpperCase() } }
   const saveMatch = m.match(/(?:save|épargner|déposer|deposit|supply)\s+([\d.]+)(?:\s+(\w+))?/i)
   if (saveMatch) return { action: "supply_aave", params: { amount: saveMatch[1], asset: (saveMatch[2] || "cUSD").toUpperCase() } }
   const sendMatch = m.match(/(?:send|envoie|envoyer|transfer)\s+([\d.]+)\s+celo\s+(?:to|à|a)\s+(0x[a-f0-9]{40})/i)
