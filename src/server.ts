@@ -481,7 +481,7 @@ app.get("/health", (_, res) => res.json({
   network: "Celo Mainnet (Chain ID: 42220)",
   sdk:     "@celobank/agent-sdk@1.0.5",
   mode:    "non-custodial (v2)",
-  tools:   19,
+  tools:   21,
   docs:    "/docs",
   uptime:  Math.floor(process.uptime()),
 }))
@@ -507,12 +507,14 @@ const MCP_TOOLS = [
   { name: "get_dailydrop_status", description: "Check DailyDrop streak and Proof of Presence badge" },
   { name: "launch_token",         description: "Deploy a new ERC20 token on Celo via TokenFactory" },
   { name: "get_tokens",           description: "List all tokens launched via CeloBank TokenFactory" },
+  { name: "check_gooddollar",        description: "Check G$ balance and GoodDollar human verification status for an address" },
+  { name: "get_engagement_rewards",  description: "Show CeloBank's GoodDollar engagement reward stats (G$ distributed, users onboarded)" },
 ]
 
 app.get("/mcp", (_, res) => res.json({
   name:        "CeloBank Agent",
   version:     "2.0.0",
-  description: "Non-custodial AI DeFi agent on Celo Mainnet — 19 tools",
+  description: "Non-custodial AI DeFi agent on Celo Mainnet — 21 tools",
   tools:       MCP_TOOLS.map(t => t.name),
   status:      "healthy",
   endpoint:    "https://celobank-agent-production.up.railway.app",

@@ -21,6 +21,7 @@ import {
   getDailyDropStatusTool,
 } from "../tools/advanced.js"
 import { launchTokenTool, getTokensTool, getTrendingTokensTool } from "../tools/launch.js"
+import { checkGoodDollarTool, getEngagementRewardsTool } from "../tools/gooddollar.js"
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!
 const MODEL        = "llama-3.3-70b-versatile"
@@ -52,6 +53,9 @@ const tools = {
   launch_token:         launchTokenTool,
   get_tokens:           getTokensTool,
   get_trending_tokens:  getTrendingTokensTool,
+  // GoodDollar
+  check_gooddollar:        checkGoodDollarTool,
+  get_engagement_rewards:  getEngagementRewardsTool,
 }
 
 const DIRECT_RETURN_TOOLS = new Set([
@@ -75,6 +79,8 @@ const DIRECT_RETURN_TOOLS = new Set([
   "launch_token",
   "get_tokens",
   "get_trending_tokens",
+  "check_gooddollar",
+  "get_engagement_rewards",
 ])
 
 const toolSchemas = [
@@ -316,6 +322,34 @@ const toolSchemas = [
       parameters: { type: "object", properties: {} },
     },
   },
+  // GoodDollar
+  {
+    type: "function",
+    function: {
+      name: "check_gooddollar",
+      description: "Check a wallet's G$ (GoodDollar) balance and human verification status on Celo. Shows verification status, expiry, and how to earn G$ rewards.",
+      parameters: {
+        type: "object",
+        properties: {
+          address: { type: "string", description: "Wallet address to check" },
+        },
+        required: ["address"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_engagement_rewards",
+      description: "Show CeloBank's GoodDollar engagement reward stats: total G$ distributed and users onboarded via referrals.",
+      parameters: {
+        type: "object",
+        properties: {
+          address: { type: "string", description: "App address to query (optional, defaults to CeloBank)" },
+        },
+      },
+    },
+  },
 ]
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
@@ -334,6 +368,7 @@ You can help users with:
 - 🌉 BRIDGE: Info on how to move tokens between chains to/from Celo
 - 🔥 DAILYDROP: Check streak status and Proof of Presence badge
 - 🚀 TOKEN LAUNCHER: Deploy a new ERC20 token on Celo in one transaction; browse all launched tokens
+- 🌱 GOODDOLLAR: Check G$ balance, human verification status, and referral engagement rewards
 
 Always:
 - Be concise and actionable
