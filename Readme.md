@@ -87,7 +87,7 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 
 ---
 
-## ✨ Features (v2 — 16 tools)
+## ✨ Features (v2 — 19 tools)
 
 | Feature | Description |
 |---------|-------------|
@@ -101,6 +101,7 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 | 📈 **Market Overview** | Full market dashboard for all Celo tokens |
 | 🌉 **Bridge Info** | How to move tokens to/from Celo (Squid, Jumper, Wormhole) |
 | 🔥 **DailyDrop Streak** | Check Proof of Presence streak + badge directly in agent |
+| 🚀 **Token Launcher** | Deploy any ERC20 token on Celo in one transaction — name, symbol, supply |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity |
 | 🔐 **Self Agent ID** | ZK-verified onchain identity via Self Protocol |
 | 📱 **MiniPay Compatible** | Auto-detect & auto-connect — zero friction for 15M+ users |
@@ -113,7 +114,8 @@ const prices    = await sdk.getPrices({ tokens: ["CELO", "cUSD"] })
 
 | Contract | Address | Network |
 |----------|---------|---------|
-| ERC-8004 Identity | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` | Celo Mainnet |
+| **TokenFactory** | [`0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e`](https://celoscan.io/address/0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e) | Celo Mainnet |
+| ERC-8004 Identity | [`0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1`](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1) | Celo Mainnet |
 | Mento V2 Broker | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` | Celo Mainnet |
 | Aave V3 Pool | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` | Celo Mainnet |
 | stCELO Manager | `0x0239b96D10a434a56CC9E09383077A0490cF9398` | Celo Mainnet |
@@ -167,7 +169,17 @@ POST /api/v1/prepare
 # Returns unsigned transactions the frontend signs with wagmi
 ```
 
-**Supported actions**: `swap`, `supply_aave`, `send`, `stake`
+**Supported actions**: `swap`, `supply_aave`, `send`, `stake`, `launch_token`, `get_tokens`, `get_trending`
+
+| Action | Required params | Description |
+|--------|-----------------|-------------|
+| `swap` | `amount`, `tokenOut` | Swap CELO → stablecoin via Mento V2 |
+| `supply_aave` | `amount`, `asset?` | Deposit to Aave V3 |
+| `send` | `to`, `amount` | Send CELO to an address |
+| `stake` | `amount` | Stake CELO → stCELO |
+| `launch_token` | `name`, `symbol`, `totalSupply` | Deploy a new ERC20 token on Celo |
+| `get_tokens` | _(none)_ | List all tokens launched via the factory |
+| `get_trending` | _(none)_ | Get the 5 most recently launched tokens |
 
 ---
 
@@ -188,6 +200,16 @@ POST /api/v1/prepare
 
 👤 "get bridge info"
 🤖 🌉 Squid Router, Jumper Exchange, Wormhole — routes & fees...
+
+👤 "launch a token called SunCoin, symbol SUN, 1 million supply"
+🤖 > PREPARING TX... Action: LAUNCH_TOKEN
+   > Ready to launch SunCoin (SUN) with 1,000,000 tokens. Sign 1 transaction.
+   ✅ Token deployed! 📍 https://celoscan.io/address/0x...
+
+👤 "show me trending tokens"
+🤖 🔥 Trending on CeloBank — 5 most recent launches:
+   1. SunCoin (SUN) — 1,000,000 supply
+      📍 0x...
 ```
 
 ---
@@ -207,11 +229,12 @@ User (any language, any device)
   └── POST /api/v1/prepare → unsigned TX builder
        ↓
   AI Agent (Groq — llama-3.3-70b-versatile)
-  └── 16 tools across 3 files:
+  └── 19 tools across 4 files:
       ├── tools/celo.ts     → balance, send, price
       ├── tools/defi.ts     → swap, Aave
       ├── tools/staking.ts  → stCELO stake/unstake, yield options
       ├── tools/advanced.ts → trade ideas, market, bridge, DailyDrop
+      ├── tools/launch.ts   → token launcher, list tokens, trending
       └── tools/prepare.ts  → unsigned TX builder (non-custodial)
        ↓
   Celo Mainnet (Chain ID: 42220)
