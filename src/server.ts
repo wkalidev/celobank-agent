@@ -248,7 +248,7 @@ app.post("/api/v1/chat", async (req, res) => {
     paymentData,
     payTo: "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357",
     network: celo,
-    price: { amount: "3000000000000000", asset: { address: "0x471EcE3750Da237f93B8E339c536989b8978a438" } },
+    price: { amount: "1000000000000000", asset: { address: "0x765DE816845861e75A25fCA122bb6898B8B1282a" } },
     facilitator: thirdwebFacilitator,
   })
   if (paymentResult.status !== 200) {
