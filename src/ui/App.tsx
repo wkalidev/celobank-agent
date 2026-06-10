@@ -99,12 +99,14 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
   // e.g. "launch a token called SunCoin symbol SUN supply 1000000"
   //      "create token SunCoin SUN 1000000"
   //      "deploy new token named GoldCoin ticker GLD 500000"
-  if (/(?:launch|create|deploy|lancer|créer)\s+(?:a\s+|new\s+|un\s+)?(?:new\s+)?token/i.test(msg)) {
-    const nameMatch  = msg.match(/(?:called|named|:\s*)([A-Za-z][A-Za-z0-9 ]{1,28}?)(?:\s*,|\s+symbol|\s+ticker|\s+sym\b|\s+supply|\s+total)/i)
+  // Launch token: if the message has a launch verb + "token", it owns this branch entirely.
+  // Never fall through to supply_aave — "supply" in "1000000 supply" is a launch param, not a deposit.
+  const isLaunchIntent = /(?:launch|create|deploy|lancer|créer)/i.test(msg) && /\btoken\b/i.test(msg)
+  if (isLaunchIntent) {
+    const nameMatch   = msg.match(/(?:called|named|:\s*)([A-Za-z][A-Za-z0-9 ]{1,28}?)(?:\s*,|\s+symbol|\s+ticker|\s+sym\b|\s+supply|\s+total)/i)
     const symbolMatch = msg.match(/(?:symbol|ticker|sym)[:\s]+([A-Za-z][A-Za-z0-9]{0,10})/i)
     const supplyMatch = msg.match(/(?:supply|total(?:\s+supply)?)[:\s]+([\d,.]+[kmb]?(?:\s*million)?)/i)
                      ?? msg.match(/([\d,.]+[kmb]?(?:\s*million)?)\s+(?:supply|tokens?)/i)
-
     if (nameMatch && symbolMatch && supplyMatch) {
       return {
         action: "launch_token",
@@ -115,6 +117,7 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
         },
       }
     }
+    return null  // launch intent but params incomplete — let the AI agent ask for details
   }
 
   const swapMatch = m.match(/(?:swap|échange|swapper|échanger|convertir)\s+([\d.]+)\s+celo\s+(?:to|vers|contre|en|→|->)\s+(\w+)/i)
@@ -407,6 +410,44 @@ function LeftSidebarContent({ actions, selectedLang, setSelectedLang, streak, ch
   )
 }
 
+// ─── PriceBadge (outside App — stable component identity, no remount on App re-render) ──
+function PriceBadge({ celoPrice, priceTrend }: { celoPrice: string | null; priceTrend: "up" | "down" | null }) {
+  const color = priceTrend === "up" ? "#00ff9f" : priceTrend === "down" ? "#ff4d6d" : "#00d4ff"
+  return (
+    <div style={{ padding: "4px 10px", borderRadius: 3, background: "rgba(0,255,159,0.05)", border: "1px solid rgba(0,255,159,0.25)", display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.45 }}>CELO</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: "-0.01em" }}>{celoPrice ? `$${celoPrice}` : "···"}</span>
+      {priceTrend && <span style={{ fontSize: 9, color }}>{priceTrend === "up" ? "▲" : "▼"}</span>}
+    </div>
+  )
+}
+
+// ─── ChatMessages (outside App — stable component identity, prevents message re-animation) ──
+function ChatMessages({ messages, loading, address, isFarcaster, isMiniPay, farcasterUser, bottomRef, compact = false }: {
+  messages: Message[]; loading: boolean; address?: string; isFarcaster: boolean; isMiniPay: boolean
+  farcasterUser: { fid?: number; username?: string } | null; bottomRef: React.RefObject<HTMLDivElement | null>; compact?: boolean
+}) {
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: compact ? "12px" : "20px", display: "flex", flexDirection: "column", gap: compact ? 12 : 16 }}>
+      {messages.map((msg, i) => (
+        <MessageBubble key={i} msg={msg} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} compact={compact} />
+      ))}
+      {loading && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: compact ? 8 : 10, animation: "fadeIn 0.2s ease" }}>
+          <div style={{ width: compact ? 24 : 30, height: compact ? 24 : 30, borderRadius: 3, overflow: "hidden", border: "1px solid rgba(0,255,159,0.3)", flexShrink: 0 }}>
+            <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%", filter: "hue-rotate(90deg)" }} />
+          </div>
+          <div style={{ padding: compact ? "9px 12px" : "12px 16px", borderRadius: 3, background: "rgba(0,255,159,0.05)", border: "1px solid rgba(0,255,159,0.22)", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "#00ff9f", opacity: 0.6, letterSpacing: "0.1em" }}>PROCESSING</span>
+            <LoadingDots />
+          </div>
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const isMiniPay = detectMiniPay()
@@ -447,17 +488,22 @@ export default function App() {
   const [checking, setChecking] = useState(false)
   const [claiming, setClaiming] = useState(false)
 
+  // Use a ref so loadStreak always reads the latest publicClient without it
+  // being a useCallback dependency (avoids re-render loop on unstable wagmi refs).
+  const publicClientRef = useRef(publicClient)
+  useEffect(() => { publicClientRef.current = publicClient }, [publicClient])
+
   const loadStreak = useCallback(async () => {
-    if (!address || !publicClient) return
+    if (!address || !publicClientRef.current) return
     try {
-      const data = await (publicClient as any).readContract({ address: DAILYDROP_CELO, abi: DAILYDROP_ABI, functionName: "getUserData", args: [address] })
+      const data = await (publicClientRef.current as any).readContract({ address: DAILYDROP_CELO, abi: DAILYDROP_ABI, functionName: "getUserData", args: [address] })
       const stored = localStorage.getItem(`dd_streak_${address}`)
       const best = stored ? Math.max(JSON.parse(stored).best ?? 0, Number(data[0])) : Number(data[0])
       const s: StreakData = { current: Number(data[0]), best, total: Number(data[2]), canCheckIn: Boolean(data[3]), canClaim: Boolean(data[4]), nextCheckIn: Number(data[5]) }
       setStreak(s)
       localStorage.setItem(`dd_streak_${address}`, JSON.stringify(s))
     } catch {}
-  }, [address, publicClient])
+  }, [address])  // publicClient intentionally excluded — read via ref to prevent re-render loop
 
   useEffect(() => { loadStreak() }, [loadStreak])
 
@@ -547,7 +593,7 @@ export default function App() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 
   useEffect(() => {
-    const interval = setInterval(() => { setBlockNum(b => b + 1); setPingMs(Math.floor(Math.random() * 20) + 5) }, 5000)
+    const interval = setInterval(() => { setBlockNum(b => b + 1); setPingMs(Math.floor(Math.random() * 20) + 5) }, 12000)
     return () => clearInterval(interval)
   }, [])
 
@@ -607,37 +653,6 @@ export default function App() {
     } finally { setLoading(false) }
   }
 
-  // ─── Shared pieces ─────────────────────────────────────────────────────────
-  const priceColor = priceTrend === "up" ? "#00ff9f" : priceTrend === "down" ? "#ff4d6d" : "#00d4ff"
-
-  const PriceBadge = () => (
-    <div style={{ padding: "4px 10px", borderRadius: 3, background: "rgba(0,255,159,0.05)", border: "1px solid rgba(0,255,159,0.25)", display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.45 }}>CELO</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: priceColor, letterSpacing: "-0.01em" }}>{celoPrice ? `$${celoPrice}` : "···"}</span>
-      {priceTrend && <span style={{ fontSize: 9, color: priceColor }}>{priceTrend === "up" ? "▲" : "▼"}</span>}
-    </div>
-  )
-
-  const ChatMessages = ({ compact = false }: { compact?: boolean }) => (
-    <div style={{ flex: 1, overflowY: "auto", padding: compact ? "12px" : "20px", display: "flex", flexDirection: "column", gap: compact ? 12 : 16 }}>
-      {messages.map((msg, i) => (
-        <MessageBubble key={i} msg={msg} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} compact={compact} />
-      ))}
-      {loading && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: compact ? 8 : 10, animation: "fadeIn 0.2s ease" }}>
-          <div style={{ width: compact ? 24 : 30, height: compact ? 24 : 30, borderRadius: 3, overflow: "hidden", border: "1px solid rgba(0,255,159,0.3)", flexShrink: 0 }}>
-            <img src="/logo.svg" alt="Agent" style={{ width: "100%", height: "100%", filter: "hue-rotate(90deg)" }} />
-          </div>
-          <div style={{ padding: compact ? "9px 12px" : "12px 16px", borderRadius: 3, background: "rgba(0,255,159,0.05)", border: "1px solid rgba(0,255,159,0.22)", display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#00ff9f", opacity: 0.6, letterSpacing: "0.1em" }}>PROCESSING</span>
-            <LoadingDots />
-          </div>
-        </div>
-      )}
-      <div ref={bottomRef} />
-    </div>
-  )
-
   // ── MOBILE LAYOUT (<640px or MiniPay/Farcaster) ────────────────────────────
   if (showMobileLayout) {
     return (
@@ -662,7 +677,7 @@ export default function App() {
             <div style={{ fontSize: 8, color: "#00ff9f", opacity: 0.35, letterSpacing: "0.08em" }}>#{blockNum.toLocaleString()} · {pingMs}ms</div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <PriceBadge />
+            <PriceBadge celoPrice={celoPrice} priceTrend={priceTrend} />
             {!isMiniPay && !isFarcaster && (
               <div style={{ transform: "scale(0.82)", transformOrigin: "right center" }}><ConnectButton /></div>
             )}
@@ -681,7 +696,7 @@ export default function App() {
         </div>
 
         {/* Messages */}
-        <ChatMessages compact />
+        <ChatMessages messages={messages} loading={loading} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} bottomRef={bottomRef} compact />
 
         {/* Quick actions strip */}
         <div style={{ flexShrink: 0, borderTop: "1px solid rgba(0,255,159,0.1)", background: "rgba(0,0,0,0.5)" }}>
@@ -749,7 +764,7 @@ export default function App() {
             <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.14em", color: "#00ff9f", textShadow: "0 0 8px rgba(0,255,159,0.6)" }}><GlitchText text="CELOBANK_AGENT" /></div>
             <div style={{ fontSize: 8, color: "#00ff9f", opacity: 0.4, letterSpacing: "0.1em" }}>#{blockNum.toLocaleString()} · {pingMs}ms · MAINNET</div>
           </div>
-          <PriceBadge />
+          <PriceBadge celoPrice={celoPrice} priceTrend={priceTrend} />
           <div style={{ marginLeft: "auto" }}><ConnectButton /></div>
         </div>
 
@@ -771,7 +786,7 @@ export default function App() {
               <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.3, letterSpacing: "0.1em" }}>TERMINAL://celobank/chat — {messages.length} MSGS</span>
               <span style={{ marginLeft: "auto", fontSize: 9, color: "#00ff9f", opacity: 0.25 }}>{address ? `${address.slice(0,6)}…${address.slice(-4)}` : "NOT_CONNECTED"}</span>
             </div>
-            <ChatMessages />
+            <ChatMessages messages={messages} loading={loading} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} bottomRef={bottomRef} />
             <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(0,255,159,0.12)", background: "rgba(0,0,0,0.5)", flexShrink: 0 }}>
               <InputBar value={input} onChange={setInput} onSend={sendMessage} loading={loading} />
               <div style={{ marginTop: 6, fontSize: 9, color: "#00ff9f", opacity: 0.18, letterSpacing: "0.07em", textAlign: "center" }}>NON-CUSTODIAL · CELO_MAINNET_42220 · ERC-8004</div>
@@ -826,7 +841,7 @@ export default function App() {
           <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.16em", color: "#00ff9f", textShadow: "0 0 12px rgba(0,255,159,0.7)" }}><GlitchText text="CELOBANK_AGENT" /></div>
           <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.45, letterSpacing: "0.1em" }}>BLOCK #{blockNum.toLocaleString()} · {pingMs}ms · MAINNET</div>
         </div>
-        <div style={{ marginLeft: 12 }}><PriceBadge /></div>
+        <div style={{ marginLeft: 12 }}><PriceBadge celoPrice={celoPrice} priceTrend={priceTrend} /></div>
         <div style={{ display: "flex", gap: 7, marginLeft: 8 }}>
           {[{ label: "GAS", val: "<$0.001", color: "#00ff9f" }, { label: "ERC", val: "8004", color: "#00d4ff" }, { label: "NET", val: "CELO", color: "#ffbe0b" }].map((s, i) => (
             <div key={i} style={{ padding: "3px 9px", borderRadius: 3, fontSize: 9, letterSpacing: "0.1em", background: `${s.color}0e`, border: `1px solid ${s.color}35`, color: s.color }}>{s.label}:{s.val}</div>
@@ -848,7 +863,7 @@ export default function App() {
             <span style={{ fontSize: 9, color: "#00ff9f", opacity: 0.3, letterSpacing: "0.1em" }}>TERMINAL://celobank/chat — {messages.length} MSGS</span>
             <span style={{ marginLeft: "auto", fontSize: 9, color: "#00ff9f", opacity: 0.25 }}>{address ? `WALLET: ${address.slice(0,6)}…${address.slice(-4)}` : "WALLET: NOT_CONNECTED"}</span>
           </div>
-          <ChatMessages />
+          <ChatMessages messages={messages} loading={loading} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} bottomRef={bottomRef} />
           <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,255,159,0.13)", background: "rgba(0,0,0,0.55)", flexShrink: 0 }}>
             <InputBar value={input} onChange={setInput} onSend={sendMessage} loading={loading} />
             <div style={{ marginTop: 7, fontSize: 9, color: "#00ff9f", opacity: 0.16, letterSpacing: "0.08em", textAlign: "center" }}>NON-CUSTODIAL · GAS PAID BY YOU · CELO_MAINNET_42220 · ERC-8004 · GROQ_LLAMA3.3</div>
