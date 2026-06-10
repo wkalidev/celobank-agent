@@ -3,7 +3,7 @@ import "@nomicfoundation/hardhat-toolbox-viem";
 import "dotenv/config";
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.25",
+  solidity: "0.8.28",
   networks: {
     celo: {
       type: "http",

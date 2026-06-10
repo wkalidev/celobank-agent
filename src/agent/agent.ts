@@ -19,6 +19,7 @@ import {
   getBridgeInfoTool,
   getDailyDropStatusTool,
 } from "../tools/advanced.js"
+import { launchTokenTool, getTokensTool, getTrendingTokensTool } from "../tools/launch.js"
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!
 const MODEL        = "llama-3.3-70b-versatile"
@@ -45,6 +46,10 @@ const tools = {
   get_market_overview:  getMarketOverviewTool,
   get_bridge_info:      getBridgeInfoTool,
   get_dailydrop_status: getDailyDropStatusTool,
+  // Token Launcher
+  launch_token:         launchTokenTool,
+  get_tokens:           getTokensTool,
+  get_trending_tokens:  getTrendingTokensTool,
 }
 
 const DIRECT_RETURN_TOOLS = new Set([
@@ -64,6 +69,9 @@ const DIRECT_RETURN_TOOLS = new Set([
   "get_market_overview",
   "get_bridge_info",
   "get_dailydrop_status",
+  "launch_token",
+  "get_tokens",
+  "get_trending_tokens",
 ])
 
 const toolSchemas = [
@@ -255,6 +263,40 @@ const toolSchemas = [
       },
     },
   },
+  // Token Launcher
+  {
+    type: "function",
+    function: {
+      name: "launch_token",
+      description: "Launch a new ERC20 token on Celo. Returns an unsigned transaction for the user to sign.",
+      parameters: {
+        type: "object",
+        properties: {
+          name:        { type: "string", description: "Full token name (e.g. 'My Token')" },
+          symbol:      { type: "string", description: "Ticker symbol, max 11 chars (e.g. 'MTK')" },
+          totalSupply: { type: "string", description: "Total token supply as a plain number (e.g. '1000000')" },
+          userAddress: { type: "string", description: "Creator wallet address" },
+        },
+        required: ["name", "symbol", "totalSupply"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_tokens",
+      description: "List all ERC20 tokens launched via CeloBank Token Factory",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_trending_tokens",
+      description: "Get the 5 most recently launched tokens on CeloBank Token Factory",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ]
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
@@ -269,6 +311,7 @@ You can help users with:
 - 📊 MARKET: Real-time prices and market overview for all Celo tokens
 - 🌉 BRIDGE: Info on how to move tokens between chains to/from Celo
 - 🔥 DAILYDROP: Check streak status and Proof of Presence badge
+- 🚀 TOKEN LAUNCHER: Deploy a new ERC20 token on Celo in one transaction; browse all launched tokens
 
 Always:
 - Be concise and actionable

@@ -4,6 +4,7 @@ import cors from "cors"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
+import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { createThirdwebClient } from "thirdweb"
 import { settlePayment, facilitator } from "thirdweb/x402"
 import { celo } from "thirdweb/chains"
@@ -329,8 +330,18 @@ app.post("/api/v1/prepare", async (req, res) => {
         result = await prepareStake(userAddress, params.amount)
         break
 
+      case "launch_token":
+        result = await prepareLaunchToken(userAddress, params.name, params.symbol, params.totalSupply)
+        break
+
+      case "get_trending":
+        return res.json({ result: await getTrendingTokens() })
+
+      case "get_tokens":
+        return res.json({ result: await getTokens() })
+
       default:
-        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake` })
+        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, launch_token, get_tokens, get_trending` })
     }
 
     console.log(`✅ [prepare] ${action} prepared for ${userAddress.slice(0, 8)}... — ${result.transactions.length} TX(s)`)
