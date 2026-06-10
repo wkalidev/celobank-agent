@@ -11,6 +11,7 @@
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Deployed-FCFF52?style=for-the-badge)](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
 [![Self Agent](https://img.shields.io/badge/Self_Agent-Verified-6366f1?style=for-the-badge)](https://app.ai.self.xyz/agents)
 [![MiniPay](https://img.shields.io/badge/MiniPay-Compatible-35D07F?style=for-the-badge)](https://minipay.opera.com)
+[![GoodBuilders](https://img.shields.io/badge/GoodBuilders-Season%204-00C853?style=for-the-badge)](https://celobuilders.xyz/hackathons/celo-onchain-agents)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
@@ -87,10 +88,12 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | `launchToken(params)` | Deploy a new ERC20 token on Celo via TokenFactory |
 | `getAavePosition(params?)` | Read Aave V3 position (collateral, debt, health factor) |
 | `supplyAave(params)` | Deposit asset on Aave V3 to earn yield |
+| `checkGoodDollar(params?)` | Read G$ balance + GoodDollar human verification status |
+| `getEngagementRewards(params?)` | Read CeloBank engagement reward stats (users onboarded, G$ distributed) |
 
 ---
 
-## ✨ Features (v2 — 19 tools)
+## ✨ Features (v2 — 21 tools)
 
 | Feature | Description |
 |---------|-------------|
@@ -105,9 +108,11 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | 🌉 **Bridge Info** | How to move tokens to/from Celo (Squid, Jumper, Wormhole) |
 | 🔥 **DailyDrop Streak** | Check Proof of Presence streak + badge directly in agent |
 | 🚀 **Token Launcher** | Deploy any ERC20 token on Celo in one transaction — name, symbol, supply |
+| 🌱 **GoodDollar G$** | Check G$ balance, human verification status + referral engagement rewards |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity |
 | 🔐 **Self Agent ID** | ZK-verified onchain identity via Self Protocol |
 | 📱 **MiniPay Compatible** | Auto-detect & auto-connect — zero friction for 15M+ users |
+| 🌱 **G$ Button in UI** | One-tap G$ status check — balance, verification, referral reward stats |
 | ⚡ **Sub-cent fees** | Gas fees under $0.001 on Celo |
 | 🔓 **Non-Custodial** | User signs every TX — agent never holds funds |
 
@@ -123,6 +128,9 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | Uniswap V3 Router | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` | Celo Mainnet |
 | Aave V3 Pool | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` | Celo Mainnet |
 | stCELO Manager | `0x0239b96D10a434a56CC9E09383077A0490cF9398` | Celo Mainnet |
+| **GoodDollar EngagementRewards** | [`0x25db74CF4E7BA120526fd87e159CF656d94bAE43`](https://celoscan.io/address/0x25db74CF4E7BA120526fd87e159CF656d94bAE43) | Celo Mainnet |
+| GoodDollar IdentityV4 | [`0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`](https://celoscan.io/address/0xC361A6E67822a0EDc17D899227dd9FC50BD62F42) | Celo Mainnet |
+| G$ Token | [`0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A) | Celo Mainnet |
 
 ---
 
@@ -239,13 +247,14 @@ User (any language, any device)
   └── POST /api/v1/prepare → unsigned TX builder
        ↓
   AI Agent (Groq — llama-3.3-70b-versatile)
-  └── 19 tools across 4 files:
-      ├── tools/celo.ts     → balance, send, price
-      ├── tools/defi.ts     → swap, Aave
-      ├── tools/staking.ts  → stCELO stake/unstake, yield options
-      ├── tools/advanced.ts → trade ideas, market, bridge, DailyDrop
-      ├── tools/launch.ts   → token launcher, list tokens, trending
-      └── tools/prepare.ts  → unsigned TX builder (non-custodial)
+  └── 21 tools across 5 files:
+      ├── tools/celo.ts        → balance, send, price
+      ├── tools/defi.ts        → swap, Aave
+      ├── tools/staking.ts     → stCELO stake/unstake, yield options
+      ├── tools/advanced.ts    → trade ideas, market, bridge, DailyDrop
+      ├── tools/launch.ts      → token launcher, list tokens, trending
+      ├── tools/gooddollar.ts  → G$ balance, identity verification, engagement rewards
+      └── tools/prepare.ts     → unsigned TX builder (non-custodial)
        ↓
   Celo Mainnet (Chain ID: 42220)
 ```
@@ -263,6 +272,48 @@ User (any language, any device)
 - **API**: Express.js
 - **Deploy**: Vercel (UI) + Railway (API)
 - **Language**: TypeScript
+
+---
+
+## 🌱 GoodBuilders Season 4
+
+CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilders.xyz/hackathons/celo-onchain-agents)** — building AI agents on Celo with GoodDollar integration.
+
+### GoodDollar Integration
+
+| Component | Detail |
+|-----------|--------|
+| G$ Token | [`0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A) — SuperGoodDollar on Celo |
+| EngagementRewards | [`0x25db74CF4E7BA120526fd87e159CF656d94bAE43`](https://celoscan.io/address/0x25db74CF4E7BA120526fd87e159CF656d94bAE43) — $0.50 G$ per verified user |
+| IdentityV4 | [`0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`](https://celoscan.io/address/0xC361A6E67822a0EDc17D899227dd9FC50BD62F42) — human verification |
+| Registration TX | [`0x4f9c9108...`](https://celoscan.io/tx/0x4f9c91083e103d663a39469fe173ec51096be941b22a18a69c4237df37fe110f) — CeloBank registered on-chain |
+
+### What's integrated
+
+- **`check_gooddollar` agent tool** — reads G$ balance + `isVerified` / `getIdentityExpiry` from IdentityV4 for any wallet
+- **`get_engagement_rewards` agent tool** — reads `appsStats()` from EngagementRewards: users onboarded, total G$ distributed
+- **🌱 G$ button in the UI** — one-tap G$ status check in both desktop sidebar and mobile quick-action strip
+- **SDK methods** — `checkGoodDollar()` and `getEngagementRewards()` available in `@celobank/agent-sdk@1.0.6`
+- **CeloBank registered** with EngagementRewards contract (pending GoodDollar approval) — earns $0.50 G$ per new verified user onboarded
+
+### Try it
+
+```
+👤 "check my GoodDollar G$ balance and verification status"
+🤖 🌱 GoodDollar (G$) Status:
+   > Address: 0xYour...
+   > G$ Balance: 12.4500 G$
+   > Verified Human: ✅ Yes — identity expires 12/31/2026
+   💡 Your identity is verified! Invite friends to CeloBank to earn $0.50 G$ per new user.
+
+👤 "show engagement rewards"
+🤖 🎁 CeloBank × GoodDollar Engagement Rewards:
+   > Users Onboarded: 47
+   > Total G$ Distributed: 23.50 G$
+   >   └ To Users: 18.80 G$
+   >   └ To Inviters: 4.70 G$
+   > Reward per New User: 0.5000 G$
+```
 
 ---
 

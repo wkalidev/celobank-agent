@@ -22,6 +22,20 @@ export interface ClaimRewardResult {
     explorerUrl: string;
     amount: string;
 }
+export interface GoodDollarStatus {
+    address: string;
+    gBalance: string;
+    isVerified: boolean;
+    identityExpiry: string;
+}
+export interface EngagementRewardsResult {
+    appAddress: string;
+    numberOfRewards: number;
+    totalAppRewards: string;
+    totalUserRewards: string;
+    totalInviterRewards: string;
+    rewardPerUser: string;
+}
 /**
  * CeloBankSDK — Infrastructure pour construire des agents DeFi autonomes sur Celo
  *
@@ -101,6 +115,29 @@ export declare class CeloBankSDK {
      * const result = await sdk.claimDrop()
      */
     claimDrop(): Promise<ClaimRewardResult>;
+    /**
+     * Read G$ balance and GoodDollar human verification status for an address.
+     * Verification is required to earn UBI on Ethereum/Fuse; verified status is
+     * also checked by the EngagementRewards contract on Celo.
+     * @example
+     * const status = await sdk.checkGoodDollar()
+     * console.log(`G$ balance: ${status.gBalance}`)
+     * console.log(`Verified: ${status.isVerified}`)
+     */
+    checkGoodDollar(params?: {
+        address?: string;
+    }): Promise<GoodDollarStatus>;
+    /**
+     * Read CeloBank's GoodDollar engagement reward stats from the EngagementRewards
+     * contract on Celo — users onboarded and G$ distributed via referrals.
+     * @example
+     * const rewards = await sdk.getEngagementRewards()
+     * console.log(`Users onboarded: ${rewards.numberOfRewards}`)
+     * console.log(`Total G$ distributed: ${rewards.totalAppRewards}`)
+     */
+    getEngagementRewards(params?: {
+        appAddress?: string;
+    }): Promise<EngagementRewardsResult>;
     private _getExchangeId;
 }
 //# sourceMappingURL=CeloBankSDK.d.ts.map

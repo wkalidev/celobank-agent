@@ -33,6 +33,8 @@ const supply    = await sdk.supplyAave({ amount: "50" })
 const token     = await sdk.launchToken({ name: "MyCoin", symbol: "MYC", totalSupply: "1000000" })
 const streak    = await sdk.getStreak()
 const checkIn   = await sdk.checkIn()
+const gStatus   = await sdk.checkGoodDollar()
+const rewards   = await sdk.getEngagementRewards()
 ```
 
 ---
@@ -79,6 +81,8 @@ console.log("Agent wallet:", sdk.address)
 | `getStreak(params?)` | Read DailyDrop check-in streak for any address |
 | `checkIn()` | Daily check-in (0.001 CELO fee + on-chain TX) |
 | `claimDrop()` | Claim 10 DROP tokens after a 7-day streak |
+| `checkGoodDollar(params?)` | Read G$ balance + GoodDollar human verification status ✨ |
+| `getEngagementRewards(params?)` | Read engagement reward stats (users onboarded, G$ distributed) ✨ |
 
 ---
 
@@ -328,6 +332,50 @@ const result = await sdk.claimDrop()
 
 ---
 
+### `checkGoodDollar(params?)` ✨ New in v1.0.6
+
+Read the G$ (GoodDollar) balance and human verification status for any wallet on Celo.
+Verification is managed by `IdentityV4` (`0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`).
+
+```typescript
+const status = await sdk.checkGoodDollar()
+// or for any address:
+const status = await sdk.checkGoodDollar({ address: "0xABC..." })
+
+// Returns:
+{
+  address:        "0xDEAc...",
+  gBalance:       "12.4500",   // G$ balance (18 decimals)
+  isVerified:     true,        // GoodDollar FaceTec identity verified
+  identityExpiry: "2026-12-31T00:00:00.000Z"  // ISO 8601, "N/A" if not verified
+}
+```
+
+---
+
+### `getEngagementRewards(params?)` ✨ New in v1.0.6
+
+Read engagement reward statistics from the GoodDollar EngagementRewards contract.
+Shows how many users an app has onboarded and how much G$ has been distributed as referral rewards.
+
+```typescript
+const rewards = await sdk.getEngagementRewards()
+// or for any registered app:
+const rewards = await sdk.getEngagementRewards({ appAddress: "0xAPP..." })
+
+// Returns:
+{
+  appAddress:          "0xDEAc...",
+  numberOfRewards:     47,         // total users onboarded
+  totalAppRewards:     "23.5000",  // total G$ distributed
+  totalUserRewards:    "18.8000",  // G$ received by users
+  totalInviterRewards: "4.7000",   // G$ received by inviters
+  rewardPerUser:       "0.5000",   // current reward amount per new user
+}
+```
+
+---
+
 ## Universal Token Swap
 
 `swapTokens()` automatically picks the best routing path:
@@ -450,10 +498,19 @@ console.log(TOKENS.USDC.decimals)  // 6
 | Aave V3 Pool | Lending/borrowing | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` |
 | ERC-8004 Registry | Agent identity | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` |
 | DailyDrop | Check-in & streak | `0x63596cf6601ec2240A295ff2840C8d6653252AE6` |
+| GoodDollar EngagementRewards | Referral rewards ($0.50 G$/user) | `0x25db74CF4E7BA120526fd87e159CF656d94bAE43` |
+| GoodDollar IdentityV4 | Human verification status | `0xC361A6E67822a0EDc17D899227dd9FC50BD62F42` |
+| G$ Token | GoodDollar SuperToken on Celo | `0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A` |
 
 ---
 
 ## Changelog
+
+### v1.0.6
+- ✨ `checkGoodDollar(params?)` — read G$ balance + `isVerified`/`getIdentityExpiry` from GoodDollar IdentityV4 on Celo
+- ✨ `getEngagementRewards(params?)` — read `appsStats()` + `rewardAmount()` from EngagementRewards contract
+- 📦 Added `GoodDollarStatus` and `EngagementRewardsResult` exported types
+- 🌱 GoodBuilders Season 4: CeloBank registered with EngagementRewards (`0x25db74...`) on Celo Mainnet
 
 ### v1.0.5
 - 📖 Updated README with full API docs for swapTokens() and launchToken()

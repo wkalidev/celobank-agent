@@ -120,6 +120,38 @@ const celoMainnet = defineChain({
   },
 })
 
+// ─── GoodDollar Constants ─────────────────────────────────────────────────────
+const G_DOLLAR           = "0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A" as `0x${string}`
+const ENGAGEMENT_REWARDS = "0x25db74CF4E7BA120526fd87e159CF656d94bAE43" as `0x${string}`
+const IDENTITY_V4        = "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42" as `0x${string}`
+
+const IDENTITY_ABI = [
+  { name: "isVerified",        type: "function", inputs: [{ name: "_user", type: "address" }], outputs: [{ name: "", type: "bool"    }], stateMutability: "view" },
+  { name: "getIdentityExpiry", type: "function", inputs: [{ name: "_user", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+] as const
+
+const ENGAGEMENT_STATS_ABI = [
+  {
+    name: "appsStats",
+    type: "function",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [
+      { name: "numberOfRewards",     type: "uint96" },
+      { name: "totalAppRewards",     type: "uint96" },
+      { name: "totalUserRewards",    type: "uint96" },
+      { name: "totalInviterRewards", type: "uint96" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    name: "rewardAmount",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint96" }],
+    stateMutability: "view",
+  },
+] as const
+
 // ─── DailyDrop Constants ──────────────────────────────────────────────────────
 const DAILYDROP_CELO         = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
 const DAILYDROP_FEE_RECEIVER = "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357" as `0x${string}`
@@ -168,6 +200,22 @@ export interface ClaimRewardResult {
   txHash:      string
   explorerUrl: string
   amount:      string
+}
+
+export interface GoodDollarStatus {
+  address:        string
+  gBalance:       string
+  isVerified:     boolean
+  identityExpiry: string
+}
+
+export interface EngagementRewardsResult {
+  appAddress:        string
+  numberOfRewards:   number
+  totalAppRewards:   string
+  totalUserRewards:  string
+  totalInviterRewards: string
+  rewardPerUser:     string
 }
 
 /**
@@ -500,6 +548,67 @@ export class CeloBankSDK {
     return {
       success: true, txHash, amount: "10 DROP",
       explorerUrl: `https://celoscan.io/tx/${txHash}`,
+    }
+  }
+
+  // ─── GoodDollar Methods ─────────────────────────────────────────────────────
+
+  /**
+   * Read G$ balance and GoodDollar human verification status for an address.
+   * Verification is required to earn UBI on Ethereum/Fuse; verified status is
+   * also checked by the EngagementRewards contract on Celo.
+   * @example
+   * const status = await sdk.checkGoodDollar()
+   * console.log(`G$ balance: ${status.gBalance}`)
+   * console.log(`Verified: ${status.isVerified}`)
+   */
+  async checkGoodDollar(params: { address?: string } = {}): Promise<GoodDollarStatus> {
+    const addr = (params.address ?? this.address) as `0x${string}`
+
+    const [balResult, verifiedResult, expiryResult] = await Promise.allSettled([
+      this.publicClient.readContract({ address: G_DOLLAR, abi: ERC20_ABI, functionName: "balanceOf", args: [addr] }),
+      this.publicClient.readContract({ address: IDENTITY_V4, abi: IDENTITY_ABI, functionName: "isVerified", args: [addr] }),
+      this.publicClient.readContract({ address: IDENTITY_V4, abi: IDENTITY_ABI, functionName: "getIdentityExpiry", args: [addr] }),
+    ])
+
+    const gBalance   = balResult.status === "fulfilled"
+      ? parseFloat(formatUnits(balResult.value as bigint, 18)).toFixed(4) : "0.0000"
+    const isVerified = verifiedResult.status === "fulfilled" ? Boolean(verifiedResult.value) : false
+    const expiryTs   = expiryResult.status === "fulfilled" ? Number(expiryResult.value as bigint) : 0
+    const identityExpiry = expiryTs > 0 ? new Date(expiryTs * 1000).toISOString() : "N/A"
+
+    return { address: addr, gBalance, isVerified, identityExpiry }
+  }
+
+  /**
+   * Read CeloBank's GoodDollar engagement reward stats from the EngagementRewards
+   * contract on Celo — users onboarded and G$ distributed via referrals.
+   * @example
+   * const rewards = await sdk.getEngagementRewards()
+   * console.log(`Users onboarded: ${rewards.numberOfRewards}`)
+   * console.log(`Total G$ distributed: ${rewards.totalAppRewards}`)
+   */
+  async getEngagementRewards(params: { appAddress?: string } = {}): Promise<EngagementRewardsResult> {
+    const appAddr = (params.appAddress ?? this.address) as `0x${string}`
+
+    const [stats, rewardAmt] = await Promise.all([
+      this.publicClient.readContract({
+        address: ENGAGEMENT_REWARDS, abi: ENGAGEMENT_STATS_ABI, functionName: "appsStats", args: [appAddr],
+      }) as Promise<[bigint, bigint, bigint, bigint]>,
+      this.publicClient.readContract({
+        address: ENGAGEMENT_REWARDS, abi: ENGAGEMENT_STATS_ABI, functionName: "rewardAmount",
+      }) as Promise<bigint>,
+    ])
+
+    const [numberOfRewards, totalApp, totalUser, totalInviter] = stats
+
+    return {
+      appAddress:          appAddr,
+      numberOfRewards:     Number(numberOfRewards),
+      totalAppRewards:     parseFloat(formatUnits(totalApp, 18)).toFixed(4),
+      totalUserRewards:    parseFloat(formatUnits(totalUser, 18)).toFixed(4),
+      totalInviterRewards: parseFloat(formatUnits(totalInviter, 18)).toFixed(4),
+      rewardPerUser:       parseFloat(formatUnits(rewardAmt, 18)).toFixed(4),
     }
   }
 
