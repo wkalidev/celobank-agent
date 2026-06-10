@@ -28,8 +28,9 @@ import { CeloBankSDK } from "@celobank/agent-sdk"
 const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
 
 const portfolio = await sdk.getPortfolio()
-const swap      = await sdk.swap({ amount: "10", tokenOut: "cUSD" })
+const swap      = await sdk.swapTokens({ tokenIn: "cUSD", tokenOut: "USDC", amount: "10" })
 const supply    = await sdk.supplyAave({ amount: "50" })
+const token     = await sdk.launchToken({ name: "MyCoin", symbol: "MYC", totalSupply: "1000000" })
 const streak    = await sdk.getStreak()
 const checkIn   = await sdk.checkIn()
 ```
@@ -62,6 +63,24 @@ console.log("Agent wallet:", sdk.address)
 ---
 
 ## API Reference
+
+### SDK Methods
+
+| Method | Description |
+|--------|-------------|
+| `getPortfolio(params?)` | Native CELO + all ERC20 balances for any address |
+| `getPrices(params?)` | Real-time USD prices + 24h change via CoinGecko |
+| `send(params)` | Send native CELO to any address |
+| `swap(params)` | Swap CELO → stablecoin via Mento V2 (legacy) |
+| `swapTokens(params)` | Universal swap: Mento V2 or Uniswap V3 for 26+ token pairs ✨ |
+| `launchToken(params)` | Deploy a new ERC20 token on Celo via TokenFactory ✨ |
+| `getAavePosition(params?)` | Read Aave V3 position (collateral, debt, health factor) |
+| `supplyAave(params)` | Deposit asset on Aave V3 to earn yield |
+| `getStreak(params?)` | Read DailyDrop check-in streak for any address |
+| `checkIn()` | Daily check-in (0.001 CELO fee + on-chain TX) |
+| `claimDrop()` | Claim 10 DROP tokens after a 7-day streak |
+
+---
 
 ### `getPortfolio(params?)`
 
@@ -141,6 +160,64 @@ const result = await sdk.swap({
   tokenOut: "cUSD",
   txHash: "0xabc...",
   explorerUrl: "https://celoscan.io/tx/0xabc..."
+}
+```
+
+---
+
+### `swapTokens(params)` ✨ New in v1.0.4
+
+Universal swap between **any two tokens** on Celo. Routes through **Mento V2** for CELO ↔ stablecoin pairs, and **Uniswap V3** (0.3% fee) for all other pairs. Case-insensitive token symbols.
+
+```typescript
+// Mento V2 path: CELO ↔ any Mento stablecoin
+const result = await sdk.swapTokens({
+  tokenIn:  "CELO",
+  tokenOut: "cUSD",
+  amount:   "10",
+})
+
+// Uniswap V3 path: any other pair
+const result = await sdk.swapTokens({
+  tokenIn:  "cUSD",
+  tokenOut: "USDC",
+  amount:   "10",
+})
+
+// Returns:
+{
+  success: true,
+  amountIn: "10",
+  tokenOut: "USDC",
+  txHash: "0xabc...",
+  explorerUrl: "https://celoscan.io/tx/0xabc..."
+}
+```
+
+**Supported tokens (26):** CELO, cUSD/USDm, cEUR/EURm, cREAL/BRLm, KESm, NGNm, GHSm, XOFm, ZARm, GBPm, PHPm, COPm, CADm, AUDm, CHFm, JPYm, USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC
+
+---
+
+### `launchToken(params)` ✨ New in v1.0.4
+
+Deploy a new ERC20 token on Celo mainnet via the **CeloBank TokenFactory** (`0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e`).
+
+```typescript
+const result = await sdk.launchToken({
+  name:        "MyCoin",
+  symbol:      "MYC",
+  totalSupply: "1000000",
+})
+
+// Returns:
+{
+  success:      true,
+  name:         "MyCoin",
+  symbol:       "MYC",
+  totalSupply:  "1000000",
+  tokenAddress: "0xNewToken...",
+  txHash:       "0xabc...",
+  explorerUrl:  "https://celoscan.io/tx/0xabc..."
 }
 ```
 
@@ -251,6 +328,56 @@ const result = await sdk.claimDrop()
 
 ---
 
+## Universal Token Swap
+
+`swapTokens()` automatically picks the best routing path:
+
+- **Mento V2** — for CELO ↔ any Mento stablecoin (cUSD, cEUR, cREAL, KESm, NGNm, GHSm, XOFm, ZARm, GBPm, PHPm, COPm, CADm, AUDm, CHFm, JPYm)
+- **Uniswap V3** (0.3% fee) — for all other pairs (USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC, and cross-stablecoin)
+
+```typescript
+import { CeloBankSDK } from "@celobank/agent-sdk"
+
+const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
+
+// CELO → cUSD via Mento V2
+const mentoSwap = await sdk.swapTokens({ tokenIn: "CELO", tokenOut: "cUSD", amount: "5" })
+
+// cUSD → USDC via Uniswap V3
+const uniSwap = await sdk.swapTokens({ tokenIn: "cUSD", tokenOut: "USDC", amount: "10" })
+
+// CELO → WETH via Uniswap V3
+const wethSwap = await sdk.swapTokens({ tokenIn: "CELO", tokenOut: "WETH", amount: "2" })
+
+// Swap Kenyan shillings for Nigerian naira
+const fxSwap = await sdk.swapTokens({ tokenIn: "KESm", tokenOut: "NGNm", amount: "1000" })
+```
+
+---
+
+## Token Launcher
+
+`launchToken()` deploys a new ERC20 token on Celo mainnet in a single transaction using the CeloBank TokenFactory.
+
+```typescript
+import { CeloBankSDK } from "@celobank/agent-sdk"
+
+const sdk = new CeloBankSDK({ privateKey: process.env.PRIVATE_KEY! })
+
+const result = await sdk.launchToken({
+  name:        "MyCoin",
+  symbol:      "MYC",
+  totalSupply: "1000000",
+})
+
+console.log("Token deployed at:", result.tokenAddress)
+console.log("Explorer:", result.explorerUrl)
+```
+
+The deploying wallet receives the entire supply. The token is a standard ERC20 and immediately tradeable on any Celo DEX.
+
+---
+
 ## Real-World Examples
 
 | Example | Use Case | File |
@@ -274,24 +401,51 @@ console.log(TOKENS.USDC.decimals)  // 6
 
 ## Supported Tokens
 
-| Symbol | Address | Decimals |
-|--------|---------|----------|
-| CELO   | `0x471EcE3750Da237f93B8E339c536989b8978a438` | 18 |
-| cUSD   | `0x765DE816845861e75A25fCA122bb6898B8B1282a` | 18 |
-| cEUR   | `0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73` | 18 |
-| cREAL  | `0xe8537a3d056DA446677B9E9d6c5dB704EaAb4787` | 18 |
-| USDC   | `0xcebA9300f2b948710d2653dD7B07f33A8B32118C` | 6  |
-| USDT   | `0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e` | 6  |
+26 verified tokens across two routing protocols:
 
-Extra swap tokens: `KESm`, `NGNm`, `GHSm`, `XOFm`, `ZARm`, `GBPm`
+**Mento V2 (CELO ↔ stablecoin)**
+
+| Symbol | Name | Decimals |
+|--------|------|----------|
+| CELO | Celo | 18 |
+| cUSD / USDm | Celo Dollar | 18 |
+| cEUR / EURm | Celo Euro | 18 |
+| cREAL / BRLm | Celo Brazilian Real | 18 |
+| KESm | Mento Kenyan Shilling | 18 |
+| NGNm | Mento Nigerian Naira | 18 |
+| GHSm | Mento Ghanaian Cedi | 18 |
+| XOFm | Mento West African CFA Franc | 18 |
+| ZARm | Mento South African Rand | 18 |
+| GBPm | Mento British Pound | 18 |
+| PHPm | Mento Philippine Peso | 18 |
+| COPm | Mento Colombian Peso | 18 |
+| CADm | Mento Canadian Dollar | 18 |
+| AUDm | Mento Australian Dollar | 18 |
+| CHFm | Mento Swiss Franc | 18 |
+| JPYm | Mento Japanese Yen | 18 |
+
+**Uniswap V3 (all other pairs)**
+
+| Symbol | Name | Decimals |
+|--------|------|----------|
+| USDC | USD Coin | 6 |
+| USDT | Tether | 6 |
+| WETH | Wrapped Ether | 18 |
+| WBTC | Wrapped Bitcoin | 8 |
+| stCELO | Staked Celo | 18 |
+| UBE | Ubeswap | 18 |
+| USDGLO | Glo Dollar | 18 |
+| EURC | Euro Coin | 6 |
 
 ---
 
 ## On-Chain Infrastructure
 
-| Protocol | Contract | Address |
-|----------|----------|---------|
-| Mento V2 Broker | Swap router | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` |
+| Protocol | Purpose | Address |
+|----------|---------|---------|
+| TokenFactory | Token deployment | `0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e` |
+| Uniswap V3 Router | Universal swaps | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` |
+| Mento V2 Broker | CELO ↔ stablecoin swaps | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` |
 | Mento BiPool Manager | Exchange provider | `0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901` |
 | Aave V3 Pool | Lending/borrowing | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` |
 | ERC-8004 Registry | Agent identity | `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1` |
@@ -300,6 +454,15 @@ Extra swap tokens: `KESm`, `NGNm`, `GHSm`, `XOFm`, `ZARm`, `GBPm`
 ---
 
 ## Changelog
+
+### v1.0.5
+- 📖 Updated README with full API docs for swapTokens() and launchToken()
+
+### v1.0.4
+- ✨ `swapTokens()` — universal swap via Mento V2 + Uniswap V3 (26 token pairs)
+- ✨ `launchToken()` — deploy ERC20 tokens via TokenFactory on Celo mainnet
+- 📦 Expanded token registry: WETH, WBTC, stCELO, UBE, USDGLO, EURC
+- 🔧 Case-insensitive token symbol matching
 
 ### v1.0.2
 - ✨ `getStreak(params?)` — read DailyDrop streak for any address
