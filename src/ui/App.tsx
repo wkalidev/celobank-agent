@@ -8,6 +8,8 @@ import { encodeFunctionData, parseEther } from "viem"
 const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
 const FEE_RECEIVER   = "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357" as `0x${string}`
 const CHECK_IN_FEE   = parseEther("0.001")
+// cUSD on Celo mainnet — used as feeCurrency for gas in MiniPay
+const CUSD_ADDRESS   = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as `0x${string}`
 const DAILYDROP_ABI  = [
   { name: "checkIn",     type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
   { name: "claimReward", type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
@@ -521,9 +523,9 @@ export default function App() {
     }
     setChecking(true)
     try {
-      const feeTx = await walletClient.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220 })
+      const feeTx = await walletClient.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
-      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220 })
+      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       const newStreak = streak.current + 1
       const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
@@ -544,7 +546,7 @@ export default function App() {
     if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
     setClaiming(true)
     try {
-      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220 })
+      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
@@ -565,7 +567,7 @@ export default function App() {
     try {
       for (let i = 0; i < prepared.transactions.length; i++) {
         const tx = prepared.transactions[i]
-        const hash = await wc.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address })
+        const hash = await wc.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
         lastHash = hash
         if (i < prepared.transactions.length - 1) await publicClient.waitForTransactionReceipt({ hash })
       }
@@ -595,11 +597,16 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isMiniPay && !address) {
-      const eth = (window as any).ethereum
-      eth?.request({ method: "eth_requestAccounts" }).catch(console.error)
+    if (!isMiniPay || address) return
+    // Prefer wagmi connect() so address state is properly populated
+    const injectedConnector = connectors.find((c: any) => c.id === 'injected' || c.type === 'injected')
+    if (injectedConnector) {
+      connect({ connector: injectedConnector })
+    } else {
+      // Fallback: direct request keeps MiniPay functional even without wagmi connector
+      ;(window as any).ethereum?.request({ method: "eth_requestAccounts" }).catch(console.error)
     }
-  }, [isMiniPay, address])
+  }, [isMiniPay, address, connect, connectors])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 

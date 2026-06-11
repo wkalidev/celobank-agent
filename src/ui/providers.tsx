@@ -1,5 +1,6 @@
 import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit'
 import { WagmiProvider } from 'wagmi'
+import { injected } from 'wagmi/connectors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { defineChain } from 'viem'
 import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector'
@@ -19,7 +20,7 @@ const config = getDefaultConfig({
   chains: [celo],
   // 🟣 Connecteur Farcaster en premier — auto-connect dans Warpcast
   // RainbowKit garde ses propres connecteurs en fallback pour le browser normal
-  connectors: [farcasterMiniApp()],
+  connectors: [injected(), farcasterMiniApp()],
 })
 
 const queryClient = new QueryClient()
