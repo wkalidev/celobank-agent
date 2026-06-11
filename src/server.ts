@@ -2,10 +2,16 @@ import "dotenv/config"
 import express from "express"
 import cors from "cors"
 import { rateLimit } from "express-rate-limit"
+import { fileURLToPath } from "url"
+import { join, dirname } from "path"
+import { existsSync } from "fs"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname  = dirname(__filename)
 
 const app = express()
 
@@ -559,6 +565,18 @@ app.post("/mcp", (req, res) => {
 
   return res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
 })
+
+// ─── Serve UI (production) ────────────────────────────────────────────────────
+const uiDist = join(__dirname, "..", "ui", "dist")
+if (existsSync(uiDist)) {
+  app.use(express.static(uiDist))
+  // SPA fallback — serve index.html for any non-API route
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/mcp") ||
+        req.path.startsWith("/health") || req.path.startsWith("/docs")) return next()
+    res.sendFile(join(uiDist, "index.html"))
+  })
+}
 
 app.listen(3000, () => {
   console.log("🚀 CeloBank Agent API v2.0.0")
