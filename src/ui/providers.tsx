@@ -16,7 +16,7 @@ const celo = defineChain({
 
 const config = getDefaultConfig({
   appName: 'CeloBank Agent',
-  projectId: 'celobank',
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? 'celobank',
   chains: [celo],
   // 🟣 Connecteur Farcaster en premier — auto-connect dans Warpcast
   // RainbowKit garde ses propres connecteurs en fallback pour le browser normal

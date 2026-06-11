@@ -514,12 +514,13 @@ const MCP_TOOLS = [
 ]
 
 app.get("/mcp", (_, res) => res.json({
-  name:        "CeloBank Agent",
-  version:     "2.0.0",
-  description: "Non-custodial AI DeFi agent on Celo Mainnet — 21 tools",
-  tools:       MCP_TOOLS.map(t => t.name),
-  status:      "healthy",
-  endpoint:    "https://celobank-agent-production.up.railway.app",
+  name:         "CeloBank Agent",
+  version:      "2.0.0",
+  description:  "Non-custodial AI DeFi agent on Celo Mainnet — 21 tools",
+  tools:        MCP_TOOLS.map(t => t.name),
+  status:       "healthy",
+  endpoint:     "https://celobank-agent-production.up.railway.app",
+  x402support:  true,
 }))
 
 app.post("/mcp", (req, res) => {
