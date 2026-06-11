@@ -839,7 +839,7 @@ export default function App() {
             ))}
             <div style={{ padding: "9px", borderRadius: 3, background: "rgba(131,56,236,0.06)", border: "1px solid rgba(131,56,236,0.18)" }}>
               <div style={{ fontSize: 8, color: "#8338ec", opacity: 0.6, marginBottom: 3 }}>AI_MODEL</div>
-              <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.9, opacity: 0.75 }}>GROQ_LLAMA3.3<br />21_TOOLS_ACTIVE</div>
+              <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.9, opacity: 0.75 }}>CLAUDE_SONNET<br />21_TOOLS_ACTIVE</div>
             </div>
             <a href="https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" target="_blank" rel="noreferrer" style={{ marginTop: "auto", padding: "8px", borderRadius: 3, background: "rgba(0,255,159,0.03)", border: "1px solid rgba(0,255,159,0.18)", color: "#00ff9f", fontSize: 9, textAlign: "center", textDecoration: "none", letterSpacing: "0.08em", display: "block", transition: "all 0.18s" }}>
               ⬡ CELOSCAN ↗
@@ -896,7 +896,7 @@ export default function App() {
           <ChatMessages messages={messages} loading={loading} address={address} isFarcaster={isFarcaster} isMiniPay={isMiniPay} farcasterUser={farcasterUser} bottomRef={bottomRef} />
           <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,255,159,0.13)", background: "rgba(0,0,0,0.55)", flexShrink: 0 }}>
             <InputBar value={input} onChange={setInput} onSend={sendMessage} loading={loading} />
-            <div style={{ marginTop: 7, fontSize: 9, color: "#00ff9f", opacity: 0.16, letterSpacing: "0.08em", textAlign: "center" }}>NON-CUSTODIAL · GAS PAID BY YOU · CELO_MAINNET_42220 · ERC-8004 · GROQ_LLAMA3.3</div>
+            <div style={{ marginTop: 7, fontSize: 9, color: "#00ff9f", opacity: 0.16, letterSpacing: "0.08em", textAlign: "center" }}>NON-CUSTODIAL · GAS PAID BY YOU · CELO_MAINNET_42220 · ERC-8004 · CLAUDE_SONNET</div>
           </div>
         </div>
 
@@ -917,7 +917,7 @@ export default function App() {
           ))}
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(131,56,236,0.06)", border: "1px solid rgba(131,56,236,0.18)" }}>
             <div style={{ fontSize: 8, color: "#8338ec", opacity: 0.6, marginBottom: 4 }}>AI_MODEL</div>
-            <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.9, opacity: 0.75 }}>GROQ_LLAMA3.3<br />21_TOOLS_ACTIVE<br />ERC-8004 · G$</div>
+            <div style={{ fontSize: 10, color: "#8338ec", lineHeight: 1.9, opacity: 0.75 }}>CLAUDE_SONNET<br />21_TOOLS_ACTIVE<br />ERC-8004 · G$</div>
           </div>
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.18)" }}>
             <div style={{ fontSize: 8, color: "#6366f1", opacity: 0.6, marginBottom: 4 }}>SELF_AGENT</div>

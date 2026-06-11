@@ -151,7 +151,8 @@ npm run dev
 ```env
 PRIVATE_KEY=0x...                 # Agent wallet (read-only ops only in v2)
 CELO_RPC=https://forno.celo.org   # Celo Mainnet RPC
-GROQ_API_KEY=gsk_...              # From console.groq.com (free)
+ANTHROPIC_API_KEY=sk-ant-...      # From console.anthropic.com
+GROQ_API_KEY=gsk_...              # Optional fallback if ANTHROPIC_API_KEY not set
 ```
 
 ---
@@ -246,7 +247,7 @@ User (any language, any device)
   ├── POST /api/v1/chat    → AI agent (read-only)
   └── POST /api/v1/prepare → unsigned TX builder
        ↓
-  AI Agent (Groq — llama-3.3-70b-versatile)
+  AI Agent (Anthropic Claude Sonnet 4.6)
   └── 21 tools across 5 files:
       ├── tools/celo.ts        → balance, send, price
       ├── tools/defi.ts        → swap, Aave
@@ -264,7 +265,7 @@ User (any language, any device)
 ## 🛠️ Tech Stack
 
 - **Blockchain**: Celo L2 (OP Stack) — Mainnet
-- **AI**: Groq Cloud — LLaMA 3.3-70b-versatile
+- **AI**: Anthropic Claude Sonnet 4.6 (primary) / Groq LLaMA 3.3-70b (fallback)
 - **On-chain**: viem v2
 - **DeFi**: Mento V2, Aave V3, Staked CELO
 - **Identity**: ERC-8004 + Self Protocol (ZK-verified)
