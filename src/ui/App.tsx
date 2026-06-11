@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useConnect, useWalletClient, usePublicClient } from 'wagmi'
 import { sdk } from '@farcaster/miniapp-sdk'
-import { encodeFunctionData, parseEther } from "viem"
+import { encodeFunctionData, parseEther, createWalletClient, custom } from "viem"
+import { celo } from "viem/chains"
 
 // ─── DailyDrop Constants ──────────────────────────────────────────────────────
 const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
@@ -80,6 +81,17 @@ function useWindowWidth() {
 function detectMiniPay(): boolean {
   if (typeof window === "undefined") return false
   return !!((window as any).ethereum?.isMiniPay)
+}
+
+// In MiniPay, wagmi's walletClient hook often stays null because the injected
+// provider is recognized but the wagmi connector doesn't fully hydrate inside
+// MiniPay's webview. Create a walletClient directly from window.ethereum instead.
+function getMiniPayWalletClient(address: `0x${string}`) {
+  return createWalletClient({
+    account: address,
+    chain: celo,
+    transport: custom((window as any).ethereum),
+  })
 }
 
 function parseSupply(raw: string): string {
@@ -516,16 +528,17 @@ export default function App() {
   useEffect(() => { loadStreak() }, [loadStreak])
 
   const doCheckIn = useCallback(async (): Promise<string> => {
-    if (!address || !walletClient || !publicClient) return "❌ Wallet not connected."
+    const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
+    if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canCheckIn) {
       const next = streak.nextCheckIn > 0 ? new Date(streak.nextCheckIn * 1000).toLocaleTimeString() : "tomorrow"
       return `⏳ Already checked in today. Come back at ${next}`
     }
     setChecking(true)
     try {
-      const feeTx = await walletClient.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
-      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       const newStreak = streak.current + 1
       const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
@@ -542,11 +555,12 @@ export default function App() {
   }, [address, walletClient, publicClient, streak, loadStreak])
 
   const doClaimReward = useCallback(async (): Promise<string> => {
-    if (!address || !walletClient || !publicClient) return "❌ Wallet not connected."
+    const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
+    if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
     setClaiming(true)
     try {
-      const tx = await walletClient.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
@@ -556,7 +570,7 @@ export default function App() {
   }, [address, walletClient, publicClient, streak])
 
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
-    const wc = walletClientRef.current
+    const wc = (walletClientRef.current ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
     if (!address || !wc || !publicClient) {
       return "❌ Wallet not connected. Please connect your wallet first."
     }

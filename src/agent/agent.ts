@@ -452,5 +452,13 @@ async function runWithGroq(userMessage: string): Promise<string> {
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 export async function runAgent(userMessage: string): Promise<string> {
-  return ANTHROPIC_API_KEY ? runWithClaude(userMessage) : runWithGroq(userMessage)
+  if (ANTHROPIC_API_KEY) {
+    try {
+      return await runWithClaude(userMessage)
+    } catch (err) {
+      console.error("[CeloBank] Anthropic error, falling back to Groq:", err instanceof Error ? err.message : err)
+      return runWithGroq(userMessage)
+    }
+  }
+  return runWithGroq(userMessage)
 }
