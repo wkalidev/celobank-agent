@@ -519,17 +519,19 @@ const MCP_TOOLS = [
   { name: "get_engagement_rewards",  description: "Show CeloBank's GoodDollar engagement reward stats (G$ distributed, users onboarded)" },
 ]
 
-app.get("/mcp", (_, res) => res.json({
-  name:         "CeloBank Agent",
-  version:      "2.0.0",
-  description:  "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. Powered by Anthropic Claude Sonnet 4.6. ERC-8004 compliant.",
-  tools:        MCP_TOOLS.map(t => t.name),
-  status:       "healthy",
-  endpoint:     "https://celobank-agent-production.up.railway.app/mcp",
-  x402support:  true,
-}))
+// Shared MCP discovery payload — used by GET /mcp and content-negotiated GET /
+const MCP_INFO = {
+  name:        "CeloBank Agent",
+  version:     "2.0.0",
+  description: "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. Powered by Anthropic Claude Sonnet 4.6. ERC-8004 compliant.",
+  tools:       MCP_TOOLS.map(t => t.name),
+  status:      "healthy",
+  endpoint:    "https://celobank-agent-production.up.railway.app/mcp",
+  x402support: true,
+}
 
-app.post("/mcp", (req, res) => {
+// Shared JSON-RPC dispatcher — used by POST /mcp and POST /
+function handleMcpRpc(req: any, res: any) {
   const { method, id } = req.body || {}
 
   if (method === "initialize") {
@@ -564,11 +566,34 @@ app.post("/mcp", (req, res) => {
   }
 
   return res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
-})
+}
+
+app.get("/mcp",  (_, res) => res.json(MCP_INFO))
+app.post("/mcp", handleMcpRpc)
 
 // ─── Serve UI (production) ────────────────────────────────────────────────────
 const uiDist = join(__dirname, "..", "ui", "dist")
 if (existsSync(uiDist)) {
+  // Content negotiation for GET / — must be registered BEFORE express.static so it
+  // intercepts JSON clients (8004scan health checker, curl) before the static middleware
+  // serves index.html. Browsers send Accept: text/html and are unaffected.
+  app.get("/", (req, res, next) => {
+    const accept = req.headers.accept ?? ""
+    if (accept.includes("application/json") && !accept.includes("text/html")) {
+      return res.json(MCP_INFO)
+    }
+    next()
+  })
+
+  // POST / — JSON-RPC clients that hit the root instead of /mcp
+  app.post("/", (req, res) => {
+    const body = req.body || {}
+    if (body.jsonrpc !== undefined || body.method !== undefined) {
+      return handleMcpRpc(req, res)
+    }
+    res.status(404).json({ error: "Not found" })
+  })
+
   app.use(express.static(uiDist))
   // SPA fallback — serve index.html for any non-API route
   app.get("*", (req, res, next) => {
