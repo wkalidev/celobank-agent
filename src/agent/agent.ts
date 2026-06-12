@@ -356,9 +356,39 @@ const groqToolSchemas = anthropicTools.map(t => ({
   },
 }))
 
+// Extract "User wallet address: 0x..." appended by server.ts to every message.
+function extractUserAddress(message: string): string | null {
+  const m = message.match(/User wallet address:\s*(0x[a-fA-F0-9]{40})/i)
+  return m ? m[1] : null
+}
+
+// Build a dynamic suffix injected into the system prompt when a user address is known.
+// This makes Claude reliably pass the address to every read tool instead of omitting it
+// (which causes tools to fall back to the agent wallet).
+function buildSystemPrompt(userAddress: string | null): string {
+  if (!userAddress) return SYSTEM_PROMPT
+  return `${SYSTEM_PROMPT}
+
+## ACTIVE SESSION — USER WALLET
+The connected user's wallet address is: **${userAddress}**
+
+MANDATORY RULE — you MUST pass \`address="${userAddress}"\` to EVERY read tool that accepts an address parameter:
+- get_portfolio → address="${userAddress}"
+- get_balance → address="${userAddress}"
+- check_gooddollar → address="${userAddress}"
+- get_aave_position → address="${userAddress}"
+- get_staking_position → address="${userAddress}"
+- get_dailydrop_status → address="${userAddress}"
+- trade_ideas → address="${userAddress}"
+
+Never omit the address parameter for these tools — without it they query the wrong (agent) wallet and return wrong data.`
+}
+
 // ─── Anthropic runner ─────────────────────────────────────────────────────────
 async function runWithClaude(userMessage: string): Promise<string> {
-  const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
+  const anthropic   = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
+  const userAddress = extractUserAddress(userMessage)
+  const system      = buildSystemPrompt(userAddress)
 
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userMessage },
@@ -368,7 +398,7 @@ async function runWithClaude(userMessage: string): Promise<string> {
     const response = await anthropic.messages.create({
       model:      CLAUDE_MODEL,
       max_tokens: 4096,
-      system:     SYSTEM_PROMPT,
+      system,
       messages,
       tools:      anthropicTools,
     })
@@ -416,8 +446,11 @@ async function runWithClaude(userMessage: string): Promise<string> {
 async function runWithGroq(userMessage: string): Promise<string> {
   if (!GROQ_API_KEY) return "❌ No AI model configured. Set ANTHROPIC_API_KEY or GROQ_API_KEY."
 
+  const userAddress = extractUserAddress(userMessage)
+  const system      = buildSystemPrompt(userAddress)
+
   const messages: { role: string; content: string; tool_call_id?: string; name?: string }[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: system },
     { role: "user",   content: userMessage },
   ]
 
