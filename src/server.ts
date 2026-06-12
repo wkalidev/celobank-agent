@@ -522,10 +522,10 @@ const MCP_TOOLS = [
 app.get("/mcp", (_, res) => res.json({
   name:         "CeloBank Agent",
   version:      "2.0.0",
-  description:  "Non-custodial AI DeFi agent on Celo Mainnet — 21 tools",
+  description:  "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. Powered by Anthropic Claude Sonnet 4.6. ERC-8004 compliant.",
   tools:        MCP_TOOLS.map(t => t.name),
   status:       "healthy",
-  endpoint:     "https://celobank-agent-production.up.railway.app",
+  endpoint:     "https://celobank-agent-production.up.railway.app/mcp",
   x402support:  true,
 }))
 
