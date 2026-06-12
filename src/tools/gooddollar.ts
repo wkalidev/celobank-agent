@@ -3,7 +3,7 @@ import { formatUnits } from "viem"
 import { publicClient } from "./prepare.js"
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
-const G_DOLLAR           = "0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A" as `0x${string}`
+const G_DOLLAR           = "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A" as `0x${string}`
 const ENGAGEMENT_REWARDS = "0x25db74CF4E7BA120526fd87e159CF656d94bAE43" as `0x${string}`
 const IDENTITY_V4        = "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42" as `0x${string}`
 
@@ -66,6 +66,13 @@ async function checkGoodDollar(address: string): Promise<string> {
     publicClient.readContract({ address: IDENTITY_V4, abi: IDENTITY_ABI, functionName: "isVerified", args: [addr] }),
     publicClient.readContract({ address: IDENTITY_V4, abi: IDENTITY_ABI, functionName: "getIdentityExpiry", args: [addr] }),
   ])
+
+  if (balResult.status === "rejected")
+    console.error("[checkGoodDollar] balanceOf failed:", balResult.reason)
+  if (verifiedResult.status === "rejected")
+    console.error("[checkGoodDollar] isVerified failed:", verifiedResult.reason)
+  if (expiryResult.status === "rejected")
+    console.error("[checkGoodDollar] getIdentityExpiry failed:", expiryResult.reason)
 
   const gBal     = balResult.status === "fulfilled"
     ? parseFloat(formatUnits(balResult.value as bigint, 18)).toFixed(4) : "0.0000"
