@@ -536,9 +536,9 @@ export default function App() {
     }
     setChecking(true)
     try {
-      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       const newStreak = streak.current + 1
       const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
@@ -560,7 +560,7 @@ export default function App() {
     if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
     setClaiming(true)
     try {
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
@@ -647,8 +647,12 @@ export default function App() {
     const msg = text || input
     if (typeof msg !== 'string' || !msg.trim() || loading) return
 
-    if (msg === "__CHECKIN__") {
-      setMessages(prev => [...prev, { role: "user", content: "Daily check-in", timestamp: new Date() }])
+    const isCheckInMsg = msg === "__CHECKIN__"
+      || /\b(daily[\s-]?check[\s-]?in|check[\s-]?in|checkin)\b/i.test(msg.trim())
+    if (isCheckInMsg) {
+      const displayMsg = msg === "__CHECKIN__" ? "Daily check-in" : msg
+      setMessages(prev => [...prev, { role: "user", content: displayMsg, timestamp: new Date() }])
+      setInput("")
       setLoading(true)
       const result = await doCheckIn()
       setMessages(prev => [...prev, { role: "agent", content: result, timestamp: new Date() }])
