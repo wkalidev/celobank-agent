@@ -8,7 +8,7 @@
     "version": "1",
     "name": "CeloBank Agent",
     "iconUrl": "https://celobank-agent-production.up.railway.app/celobank_splash.png",
-    "homeUrl": "https://celobank-agent-production.up.railway.app",
+    "homeUrl": "https://celobank-agent.vercel.app",
     "imageUrl": "https://celobank-agent-production.up.railway.app/celobank_splash.png",
     "buttonTitle": "Open CeloBank",
     "splashImageUrl": "https://celobank-agent-production.up.railway.app/celobank_splash.png",
@@ -27,6 +27,6 @@
       "https://celobank-agent-production.up.railway.app/screenshot1.png",
       "https://celobank-agent-production.up.railway.app/screenshot2.png"
     ],
-    "castShareUrl": "https://celobank-agent-production.up.railway.app"
+    "castShareUrl": "https://celobank-agent.vercel.app"
   }
 }

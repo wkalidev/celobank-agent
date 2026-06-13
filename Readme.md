@@ -167,6 +167,7 @@ GROQ_API_KEY=gsk_...              # Optional fallback if ANTHROPIC_API_KEY not s
 | `/api/v1/prices` | GET | Real-time token prices |
 | `/api/v1/aave/:address` | GET | Aave V3 position |
 | `/api/v1/tokens` | GET | List all verified Celo tokens (88 from official token list) |
+| `/catalog` | GET | x402 machine-readable service catalog (tool list, pricing, payment schema) |
 | `/health` | GET | API status |
 | `/docs` | GET | Swagger UI |
 

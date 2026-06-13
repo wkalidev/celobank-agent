@@ -571,6 +571,103 @@ function handleMcpRpc(req: any, res: any) {
 app.get("/mcp",  (_, res) => res.json(MCP_INFO))
 app.post("/mcp", handleMcpRpc)
 
+// ─── GET /catalog — x402 machine-readable service catalog ─────────────────────
+app.get("/catalog", (_, res) => {
+  const CUSD  = "0x765DE816845861e75A25fCA122bb6898B8B1282a"
+  const WEI   = "1000000000000000" // 0.001 cUSD at 18 decimals
+
+  const free = (
+    id: string, name: string, description: string, input: Record<string, string>
+  ) => ({ id, name, description, category: "read", pricing: { scheme: "free" }, input })
+
+  const paid = (
+    id: string, name: string, description: string, input: Record<string, string>
+  ) => ({
+    id, name, description, category: "write",
+    pricing: { scheme: "exact", amount: "0.001", currency: "cUSD", amountWei: WEI, asset: CUSD, chainId: 42220 },
+    requiredHeaders: ["X-PAYMENT"],
+    input,
+  })
+
+  res.json({
+    schema:      "x402-catalog/1.0",
+    generatedAt: new Date().toISOString(),
+    service: {
+      id:          "celobank-agent",
+      name:        "CeloBank Agent",
+      description: "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ integration, DailyDrop streaks.",
+      version:     "2.0.0",
+      baseUrl:     "https://celobank-agent-production.up.railway.app",
+      entrypoint:  "POST /api/v1/chat",
+      network:     "Celo Mainnet",
+      chainId:     42220,
+    },
+    x402: {
+      facilitator:   "https://x402.org/facilitator",
+      paymentToken:  { symbol: "cUSD", address: CUSD, decimals: 18, chainId: 42220 },
+      payTo:         AGENT_ADDRESS,
+      requiredHeader: "X-PAYMENT",
+      receiptHeader:  "X-PAYMENT-RECEIPT",
+    },
+    schemas: {
+      payment402Response: {
+        status: 402,
+        body: {
+          error:       "Payment Required",
+          x402Version: 1,
+          accepts: [{
+            scheme:            "exact",
+            chainId:           42220,
+            asset:             CUSD,
+            maxAmountRequired: WEI,
+            payTo:             AGENT_ADDRESS,
+            description:       "Access to a CeloBank Agent write tool",
+            resource:          "https://celobank-agent-production.up.railway.app/api/v1/chat",
+            maxTimeoutSeconds: 300,
+          }],
+        },
+      },
+      receiptFormat: {
+        header: "X-PAYMENT-RECEIPT",
+        value: {
+          txHash:    "0x<transaction_hash>",
+          chainId:   42220,
+          network:   "celo",
+          paidTo:    "<agent_wallet_address>",
+          amount:    "0.001",
+          currency:  "cUSD",
+          settledAt: "<ISO8601>",
+        },
+      },
+    },
+    tools: [
+      // read tools — free ──────────────────────────────────────────────────────
+      free("get_balance",          "Get Balance",           "Get CELO native balance of an address",                                                    { address: "string?" }),
+      free("get_portfolio",        "Get Portfolio",         "Get full portfolio: CELO + all token balances (cUSD, cEUR, cREAL, USDC, USDT)",             { address: "string?" }),
+      free("get_multi_price",      "Get Prices",            "Get real-time USD prices for Celo tokens with 24h change",                                  { tokens: "string? (comma-separated, e.g. 'CELO,cUSD')" }),
+      free("get_aave_position",    "Get Aave Position",     "Get Aave V3 lending position: collateral, debt, and health factor",                         { address: "string?" }),
+      free("get_staking_position", "Get Staking Position",  "Get CELO + stCELO balances and current staking APY",                                       { address: "string?" }),
+      free("get_yield_options",    "Get Yield Options",     "List all yield strategies on Celo with APY, risk level, and instructions",                  { riskLevel: "string? ('low' | 'medium' | 'very low')" }),
+      free("get_market_overview",  "Market Overview",       "Real-time price overview for all Celo tokens with 24h % change",                            {}),
+      free("get_bridge_info",      "Bridge Info",           "Get bridge options to move tokens to/from Celo network",                                    { from: "string?", to: "string?", token: "string?" }),
+      free("get_dailydrop_status", "DailyDrop Status",      "Check DailyDrop check-in streak, badge, and reward eligibility for an address",             { address: "string?" }),
+      free("get_tokens",           "Get Tokens",            "List all ERC-20 tokens launched via CeloBank Token Factory",                                {}),
+      free("get_trending_tokens",  "Get Trending Tokens",   "Get the 5 most recently launched tokens on CeloBank Token Factory",                         {}),
+      free("check_gooddollar",     "Check GoodDollar",      "Check G$ balance and GoodDollar human-verified identity status",                            { address: "string (required)" }),
+      free("get_engagement_rewards", "Get Engagement Rewards", "Show CeloBank's GoodDollar EngagementRewards: total G$ distributed and users onboarded", { address: "string?" }),
+      free("trade_ideas",          "Trade Ideas",           "Analyze portfolio and generate personalized DeFi trade recommendations",                     { address: "string?" }),
+      // write tools — 0.001 cUSD each ─────────────────────────────────────────
+      paid("send_celo",    "Send CELO",          "Send CELO to an address",                                                                             { to: "string (0x address, required)", amount: "string (CELO, required)" }),
+      paid("swap_celo",    "Swap CELO",          "Swap CELO for a stablecoin (cUSD, cEUR, cREAL, USDC, USDT) via Mento V2",                            { amount: "string (required)", tokenOut: "string (required)" }),
+      paid("swap_tokens",  "Swap Tokens",        "Universal swap: any token pair on Celo via Mento V2 or Uniswap V3 (26+ tokens supported)",           { amount: "string (required)", tokenIn: "string? (default: CELO)", tokenOut: "string (required)" }),
+      paid("save_cusd",    "Save (Aave Supply)", "Supply cUSD or USDC to Aave V3 to earn yield (~3–5% APY)",                                           { amount: "string (required)", asset: "string? ('cUSD' | 'USDC', default: cUSD)" }),
+      paid("stake_celo",   "Stake CELO",         "Stake CELO to earn ~4% APY as stCELO (liquid staking, no lockup)",                                   { amount: "string (CELO to stake, required)" }),
+      paid("unstake_celo", "Unstake CELO",       "Unstake stCELO back to CELO (~3-day unbonding period)",                                              { amount: "string (stCELO to unstake, required)" }),
+      paid("launch_token", "Launch Token",       "Deploy a new ERC-20 token on Celo via CeloBank Token Factory",                                       { name: "string (required)", symbol: "string (max 11 chars, required)", totalSupply: "string (number, required)" }),
+    ],
+  })
+})
+
 // ─── Serve UI (production) ────────────────────────────────────────────────────
 const uiDist = join(__dirname, "..", "ui", "dist")
 if (existsSync(uiDist)) {

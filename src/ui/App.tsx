@@ -603,12 +603,16 @@ export default function App() {
           const farcasterConnector = connectors.find((c: any) => c.id === 'farcasterMiniApp')
           if (farcasterConnector && !address) connect({ connector: farcasterConnector })
           setMessages([{ role: "agent", content: `> CELOBANK_AGENT_v2.0 INITIALIZED\n> FARCASTER MINI APP DETECTED ✓\n> STATUS: ONLINE ■■■■■■■■■■ 100%\n\nWelcome${context.user.username ? ` @${context.user.username}` : ''} 👋\nYour Farcaster wallet is connecting automatically.\nWhat can I do for you?`, timestamp: new Date() }])
-          await sdk.actions.ready()
         }
       } catch { /* not in Farcaster */ }
     }
     initFarcaster()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dismiss the Farcaster splash screen once the app is ready
+  useEffect(() => {
+    if (isFarcaster) sdk.actions.ready()
+  }, [isFarcaster])
 
   useEffect(() => {
     if (!isMiniPay || address) return
