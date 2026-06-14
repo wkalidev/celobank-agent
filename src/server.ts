@@ -601,6 +601,21 @@ app.get("/catalog", (_, res) => {
       entrypoint:  "POST /api/v1/chat",
       network:     "Celo Mainnet",
       chainId:     42220,
+      health: {
+        endpoint: "/health",
+        status:   "operational",
+        uptime:   Math.floor(process.uptime()),
+      },
+    },
+    idempotency: {
+      header:   "Idempotency-Key",
+      behavior: "Safe retries — identical Idempotency-Key within 24h returns the original result without re-executing the on-chain action",
+      window:   "24h",
+    },
+    spendLimits: {
+      perCall: { max: "100",  currency: "cUSD" },
+      perDay:  { max: "1000", currency: "cUSD" },
+      note:    "Advisory limits; agents should not exceed without explicit user approval",
     },
     x402: {
       facilitator:   "https://x402.org/facilitator",
@@ -637,6 +652,24 @@ app.get("/catalog", (_, res) => {
           amount:    "0.001",
           currency:  "cUSD",
           settledAt: "<ISO8601>",
+        },
+      },
+      failureRefund: {
+        states:   ["pending", "settled", "failed", "refunded"],
+        behavior: {
+          onFailure: "Payment is not captured — settlement occurs only on success",
+          onRevert:  "If an on-chain action reverts after payment, the X-PAYMENT is voided and not settled",
+        },
+        sampleFailureResponse: {
+          status: 200,
+          body: {
+            error: {
+              code:          "ON_CHAIN_REVERT",
+              message:       "Transaction reverted — swap failed due to insufficient liquidity",
+              paymentStatus: "refunded",
+              txHash:        null,
+            },
+          },
         },
       },
     },

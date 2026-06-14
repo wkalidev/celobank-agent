@@ -167,9 +167,68 @@ GROQ_API_KEY=gsk_...              # Optional fallback if ANTHROPIC_API_KEY not s
 | `/api/v1/prices` | GET | Real-time token prices |
 | `/api/v1/aave/:address` | GET | Aave V3 position |
 | `/api/v1/tokens` | GET | List all verified Celo tokens (88 from official token list) |
-| `/catalog` | GET | x402 machine-readable service catalog (tool list, pricing, payment schema) |
+| `/catalog` | GET | x402 machine-readable service catalog (tool list, pricing, payment schema, idempotency, spend limits, failure/refund states) |
 | `/health` | GET | API status |
 | `/docs` | GET | Swagger UI |
+
+### GET /catalog — Agent-to-Agent Commerce
+
+Machine-readable JSON declaration for autonomous agent discovery. All fields are read-only and declarative — no middleware or enforcement.
+
+```jsonc
+{
+  "schema": "x402-catalog/1.0",
+  "generatedAt": "<ISO8601>",
+
+  // Service identity + live health
+  "service": {
+    "id": "celobank-agent",
+    "version": "2.0.0",
+    "baseUrl": "https://celobank-agent-production.up.railway.app",
+    "health": {
+      "endpoint": "/health",
+      "status": "operational",   // always set when handler is reachable
+      "uptime": 3721             // live process.uptime() in seconds
+    }
+  },
+
+  // Safe-retry contract for write tools
+  "idempotency": {
+    "header": "Idempotency-Key",
+    "behavior": "Safe retries — identical Idempotency-Key within 24h returns the original result without re-executing the on-chain action",
+    "window": "24h"
+  },
+
+  // Advisory spend caps (not enforced server-side)
+  "spendLimits": {
+    "perCall": { "max": "100",  "currency": "cUSD" },
+    "perDay":  { "max": "1000", "currency": "cUSD" },
+    "note": "Advisory limits; agents should not exceed without explicit user approval"
+  },
+
+  // x402 payment config, schemas (402 response, receipt, failure/refund), tools...
+  "schemas": {
+    "failureRefund": {
+      "states": ["pending", "settled", "failed", "refunded"],
+      "behavior": {
+        "onFailure": "Payment is not captured — settlement occurs only on success",
+        "onRevert":  "If an on-chain action reverts after payment, the X-PAYMENT is voided and not settled"
+      },
+      "sampleFailureResponse": {
+        "status": 200,
+        "body": {
+          "error": {
+            "code": "ON_CHAIN_REVERT",
+            "message": "Transaction reverted — swap failed due to insufficient liquidity",
+            "paymentStatus": "refunded",
+            "txHash": null
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ### Non-Custodial Prepare Endpoint
 
