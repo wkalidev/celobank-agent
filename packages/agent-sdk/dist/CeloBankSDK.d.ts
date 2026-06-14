@@ -1,4 +1,4 @@
-import type { CeloBankConfig, BalanceResult, PriceResult, SwapResult, SendResult, AavePosition, AaveSupplyResult, SendParams, SwapParams, SwapTokensParams, SupplyAaveParams, GetPortfolioParams, GetPricesParams, GetAavePositionParams, LaunchTokenParams, LaunchTokenResult } from "./types.js";
+import type { CeloBankConfig, BalanceResult, PriceResult, SwapResult, SendResult, AavePosition, AaveSupplyResult, SendParams, SwapParams, SwapTokensParams, SupplyAaveParams, GetPortfolioParams, GetPricesParams, GetAavePositionParams, LaunchTokenParams, LaunchTokenResult, CatalogResult } from "./types.js";
 export interface StreakResult {
     address: string;
     streak: number;
@@ -138,6 +138,17 @@ export declare class CeloBankSDK {
     getEngagementRewards(params?: {
         appAddress?: string;
     }): Promise<EngagementRewardsResult>;
+    /**
+     * Fetch the live /catalog endpoint and return the parsed JSON.
+     * Useful for agent-to-agent discovery of available tools, pricing, and payment schema.
+     * @example
+     * const catalog = await sdk.getCatalog()
+     * console.log(catalog.service.health.uptime)
+     * console.log(catalog.tools.filter(t => t.category === "free"))
+     */
+    getCatalog(params?: {
+        baseUrl?: string;
+    }): Promise<CatalogResult>;
     private _getExchangeId;
 }
 //# sourceMappingURL=CeloBankSDK.d.ts.map

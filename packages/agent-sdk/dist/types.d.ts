@@ -84,4 +84,90 @@ export interface LaunchTokenResult {
     txHash: `0x${string}`;
     explorerUrl: string;
 }
+export interface CatalogTool {
+    id: string;
+    name: string;
+    description: string;
+    category: "read" | "write";
+    pricing: {
+        scheme: "free" | "exact";
+        amount?: string;
+        currency?: string;
+        amountWei?: string;
+        asset?: string;
+        chainId?: number;
+    };
+    requiredHeaders?: string[];
+    input: Record<string, string>;
+}
+export interface CatalogResult {
+    schema: string;
+    generatedAt: string;
+    service: {
+        id: string;
+        name: string;
+        description: string;
+        version: string;
+        baseUrl: string;
+        entrypoint: string;
+        network: string;
+        chainId: number;
+        health: {
+            endpoint: string;
+            status: string;
+            uptime: number;
+        };
+    };
+    idempotency: {
+        header: string;
+        behavior: string;
+        window: string;
+    };
+    spendLimits: {
+        perCall: {
+            max: string;
+            currency: string;
+        };
+        perDay: {
+            max: string;
+            currency: string;
+        };
+        note: string;
+    };
+    x402: {
+        facilitator: string;
+        paymentToken: {
+            symbol: string;
+            address: string;
+            decimals: number;
+            chainId: number;
+        };
+        payTo: string;
+        requiredHeader: string;
+        receiptHeader: string;
+    };
+    schemas: {
+        payment402Response: unknown;
+        receiptFormat: unknown;
+        failureRefund: {
+            states: string[];
+            behavior: {
+                onFailure: string;
+                onRevert: string;
+            };
+            sampleFailureResponse: {
+                status: number;
+                body: {
+                    error: {
+                        code: string;
+                        message: string;
+                        paymentStatus: string;
+                        txHash: string | null;
+                    };
+                };
+            };
+        };
+    };
+    tools: CatalogTool[];
+}
 //# sourceMappingURL=types.d.ts.map

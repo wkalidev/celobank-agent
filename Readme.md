@@ -90,6 +90,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | `supplyAave(params)` | Deposit asset on Aave V3 to earn yield |
 | `checkGoodDollar(params?)` | Read G$ balance + GoodDollar human verification status |
 | `getEngagementRewards(params?)` | Read CeloBank engagement reward stats (users onboarded, G$ distributed) |
+| `getCatalog(params?)` | Fetch live `/catalog` — tool list, pricing, idempotency, spend limits, failure/refund schema |
 
 ---
 

@@ -19,6 +19,8 @@ export type {
   GetAavePositionParams,
   LaunchTokenParams,
   LaunchTokenResult,
+  CatalogResult,
+  CatalogTool,
 } from "./types.js"
 
 // ─── Constants (utiles pour les intégrateurs) ─────────────────────────────────

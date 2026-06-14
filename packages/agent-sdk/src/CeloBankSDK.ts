@@ -41,6 +41,7 @@ import type {
   GetAavePositionParams,
   LaunchTokenParams,
   LaunchTokenResult,
+  CatalogResult,
 } from "./types.js"
 
 // ─── Uniswap V3 Router ABI ────────────────────────────────────────────────────
@@ -610,6 +611,23 @@ export class CeloBankSDK {
       totalInviterRewards: parseFloat(formatUnits(totalInviter, 18)).toFixed(4),
       rewardPerUser:       parseFloat(formatUnits(rewardAmt, 18)).toFixed(4),
     }
+  }
+
+  // ─── Catalog ────────────────────────────────────────────────────────────────
+
+  /**
+   * Fetch the live /catalog endpoint and return the parsed JSON.
+   * Useful for agent-to-agent discovery of available tools, pricing, and payment schema.
+   * @example
+   * const catalog = await sdk.getCatalog()
+   * console.log(catalog.service.health.uptime)
+   * console.log(catalog.tools.filter(t => t.category === "free"))
+   */
+  async getCatalog(params: { baseUrl?: string } = {}): Promise<CatalogResult> {
+    const base = (params.baseUrl ?? "https://celobank-agent-production.up.railway.app").replace(/\/$/, "")
+    const res  = await fetch(`${base}/catalog`)
+    if (!res.ok) throw new Error(`GET ${base}/catalog failed: ${res.status} ${res.statusText}`)
+    return res.json() as Promise<CatalogResult>
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
