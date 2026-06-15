@@ -32,23 +32,21 @@ const MCP_TOOLS = [
   "get_engagement_rewards",
 ]
 
-// ── OASF classification ───────────────────────────────────────────────────────
+// ── OASF classification — confirmed paths from github.com/agntcy/oasf ────────
 const OASF_SKILLS = [
-  "token-swap",
-  "aave-lending",
-  "celo-staking",
-  "erc20-token-launch",
-  "gooddollar-identity",
+  "tool_interaction",
+  "analytical_skills",
+  "agent_orchestration",
+  "natural_language_processing",
 ]
 
 const OASF_DOMAINS = [
-  "defi",
-  "payments",
-  "lending",
-  "staking",
-  "tokenization",
-  "identity",
-  "financial-inclusion",
+  "technology/blockchain/defi",
+  "technology/blockchain/cryptocurrency",
+  "technology/blockchain/smart_contracts",
+  "finance_and_business/finance",
+  "finance_and_business/investment_services",
+  "trust_and_safety/fraud_prevention",
 ]
 
 // ── Registration-v1 metadata ──────────────────────────────────────────────────
@@ -77,15 +75,15 @@ const metadata = {
       mcpResources: ["api_docs", "swagger_ui", "npm_sdk"],
     },
     {
+      name:     "A2A",
+      endpoint: "https://celobank-agent-production.up.railway.app/.well-known/agent-card.json",
+      version:  "0.3.0",
+    },
+    {
       name:     "OASF",
       skills:   OASF_SKILLS,
       domains:  OASF_DOMAINS,
       endpoint: "https://github.com/agntcy/oasf/",
-    },
-    {
-      name:     "A2A",
-      endpoint: "https://celobank-agent-production.up.railway.app/.well-known/agent-card.json",
-      version:  "0.3.0",
     },
   ],
   // ASCII-only — avoids Windows console encoding corruption in transit
@@ -94,7 +92,7 @@ const metadata = {
     "Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), " +
     "GoodDollar G$ integration, DailyDrop streak rewards. 21 onchain tools. " +
     "ERC-8004 compliant. x402 supported.",
-  updatedAt:        1781481600,  // 2026-06-15 UTC
+  updatedAt:        1781568000,  // 2026-06-16 UTC
   x402Support:      true,
   registrations:    [],
   supportedTrust:   ["reputation"],
@@ -128,8 +126,9 @@ const capabilitiesOk = Array.isArray(parsed.services[0].capabilities) && parsed.
 const versionOk      = parsed.services[0].version === "2024-11-05"
 const x402Ok         = parsed.x402Support === true
 const trustOk        = Array.isArray(parsed.supportedTrust)
-const updatedAtOk    = parsed.updatedAt === 1781481600
-const a2aOk          = parsed.services[2]?.name === "A2A" && parsed.services[2]?.endpoint.includes("agent-card.json")
+const updatedAtOk    = parsed.services && parsed.updatedAt === 1781568000
+const a2aOk          = parsed.services[1]?.name === "A2A" && parsed.services[1]?.endpoint.includes("agent-card.json")
+const oasfOk         = parsed.services[2]?.name === "OASF" && Array.isArray(parsed.services[2]?.domains) && parsed.services[2].domains.includes("technology/blockchain/defi")
 
 console.log(`type field correct                  : ${typeOk         ? "PASS" : "FAIL"}`)
 console.log(`services[0].endpoint ends with /mcp : ${endpointOk     ? "PASS" : "FAIL"} (${parsed.services[0].endpoint})`)
@@ -138,10 +137,11 @@ console.log(`services[0].capabilities = ["tools"]: ${capabilitiesOk ? "PASS" : "
 console.log(`services[0].version = "2024-11-05"  : ${versionOk      ? "PASS" : "FAIL"}`)
 console.log(`x402Support = true                  : ${x402Ok         ? "PASS" : "FAIL"}`)
 console.log(`supportedTrust is array             : ${trustOk        ? "PASS" : "FAIL"}`)
-console.log(`updatedAt = 1781481600              : ${updatedAtOk    ? "PASS" : "FAIL"}`)
-console.log(`services[2] = A2A agent-card        : ${a2aOk          ? "PASS" : "FAIL"}`)
+console.log(`updatedAt = 1781568000              : ${updatedAtOk    ? "PASS" : "FAIL"}`)
+console.log(`services[1] = A2A agent-card        : ${a2aOk          ? "PASS" : "FAIL"}`)
+console.log(`services[2] = OASF with domains     : ${oasfOk         ? "PASS" : "FAIL"}`)
 
-if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk || !a2aOk) {
+if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk || !a2aOk || !oasfOk) {
   console.error("Roundtrip FAILED")
   process.exit(1)
 }
