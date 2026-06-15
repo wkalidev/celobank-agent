@@ -281,6 +281,10 @@ CeloBank Agent displays a **Self Agent ID badge** in the UI (sidebar and desktop
 
 The `get_bridge_info` tool provides routing guidance for moving assets to and from Celo via Squid Router, Jumper Exchange, and Wormhole. The tool is informational — it does not prepare bridge transactions; those require the respective bridge's own interface.
 
+### 5.5 Multi-Protocol Agent Discovery
+
+CeloBank Agent exposes two complementary machine-readable discovery interfaces: **MCP** (`POST /mcp`, JSON-RPC, protocol version `2024-11-05`) and **A2A** (`GET /.well-known/agent-card.json`, AgentCard 0.3.0). Both are registered in the ERC-8004 on-chain metadata and verified healthy on 8004scan. This multi-protocol pattern — serving both MCP and A2A from a single agent — matches the approach used by leading ERC-8004 agents and maximizes discoverability across MCP-native and A2A-native orchestration frameworks.
+
 ---
 
 ## 6. Agent-to-Agent Commerce
@@ -348,6 +352,36 @@ CeloBank Agent exposes a JSON-RPC endpoint at `POST /mcp` implementing the **Mod
 - `tools/call` — redirects callers to `/api/v1/chat` or `/api/v1/prepare` for actual execution
 
 The MCP endpoint enables MCP-compatible AI orchestration frameworks to enumerate CeloBank Agent's tools programmatically.
+
+### 6.4 A2A AgentCard
+
+CeloBank Agent serves a valid **A2A AgentCard 0.3.0** at `GET /.well-known/agent-card.json`. The A2A (Agent-to-Agent) protocol is an emerging standard for autonomous agent discovery and interoperability. Where MCP focuses on tool enumeration via JSON-RPC, A2A provides a richer skill taxonomy suited for agent-to-agent orchestration and capability matching.
+
+The AgentCard defines **8 skills**, each mapped directly to real callable tools:
+
+| Skill ID | Name | Tools |
+|---|---|---|
+| `defi-swap` | Universal Token Swap | `swap_celo`, `swap_tokens` |
+| `aave-lending` | Aave V3 Lending | `save_cusd`, `get_aave_position` |
+| `celo-staking` | CELO Liquid Staking | `stake_celo`, `unstake_celo`, `get_staking_position`, `get_yield_options` |
+| `token-launch` | ERC-20 Token Launch | `launch_token`, `get_tokens`, `get_trending_tokens` |
+| `gooddollar-identity` | GoodDollar G$ Identity & Rewards | `check_gooddollar`, `get_engagement_rewards` |
+| `portfolio-analysis` | Portfolio Analysis & Trade Ideas | `get_portfolio`, `get_multi_price`, `get_market_overview`, `trade_ideas` |
+| `remittance` | Send & Bridge | `send_celo`, `get_bridge_info` |
+| `proof-of-presence` | DailyDrop Proof of Presence | `get_dailydrop_status` |
+
+Additional AgentCard fields:
+
+| Field | Value |
+|---|---|
+| `protocolVersion` | `"0.3.0"` |
+| `preferredTransport` | `"HTTP+JSON"` |
+| `defaultInputModes` / `defaultOutputModes` | `["text/plain"]` |
+| `capabilities.streaming` | `false` — SSE not implemented |
+| `provider.organization` | `"wkalidev"` |
+| `documentationUrl` | `https://github.com/wkalidev/celobank-agent` |
+
+**On-chain status**: The A2A endpoint is live and registered in the ERC-8004 metadata alongside the MCP service. Both MCP and A2A services are verified healthy on 8004scan (100/100). An OASF service entry (Open Agent Skills Framework classification) is declared in the metadata with confirmed taxonomy paths, but the 8004scan OASF Management wizard validation has not yet been completed — OASF status will be confirmed once the wizard is run.
 
 ---
 
@@ -461,9 +495,13 @@ CeloBank Agent also deploys its own agent contract at [`0x4ebef67f7a20485ccc9e66
 | x402 support | `true` |
 | Last updated block | 69604057 |
 
-The registration metadata was generated via `scripts/gen-metadata-uri.ts` and committed on-chain. The metadata URI encodes a JSON object conforming to the ERC-8004 `registration-v1` schema, including service descriptions, MCP endpoint, x402 support flag, and a description of all 21 tools.
+The registration metadata was generated via `scripts/gen-metadata-uri.ts` and committed on-chain. The metadata URI encodes a JSON object conforming to the ERC-8004 `registration-v1` schema and declares three services:
 
-The 100/100 health score on 8004scan reflects full compliance with the required fields of the `registration-v1` schema.
+- **MCP** — `POST /mcp`, protocol version `2024-11-05`, 21 tools listed ✅ verified on 8004scan
+- **A2A** — `GET /.well-known/agent-card.json`, AgentCard 0.3.0, 8 skills ✅ verified on 8004scan
+- **OASF** — Open Agent Skills Framework classification (4 skills, 6 domains using confirmed `github.com/agntcy/oasf` taxonomy paths) — declared in metadata, 8004scan OASF wizard validation pending
+
+The 100/100 health score on 8004scan reflects full compliance with the required fields of the `registration-v1` schema across the verified MCP and A2A services.
 
 ### 9.2 Smart Contract Addresses (Complete)
 
