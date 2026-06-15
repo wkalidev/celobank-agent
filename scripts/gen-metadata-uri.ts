@@ -72,6 +72,8 @@ const metadata = {
     {
       name:         "MCP",
       endpoint:     "https://celobank-agent-production.up.railway.app/mcp",
+      version:      "2024-11-05",
+      capabilities: ["tools"],
       mcpTools:     MCP_TOOLS,
       mcpPrompts: [
         "swap CELO to cUSD",
@@ -98,9 +100,10 @@ const metadata = {
     "Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), " +
     "GoodDollar G$ integration, DailyDrop streak rewards. 21 onchain tools. " +
     "ERC-8004 compliant. x402 supported.",
-  x402support:      true,
+  updatedAt:        1781481600,  // 2026-06-15 UTC
+  x402Support:      true,
   registrations:    [],
-  supportedTrusts:  ["reputation"],
+  supportedTrust:   ["reputation"],
 }
 
 // ── Encode ────────────────────────────────────────────────────────────────────
@@ -124,15 +127,25 @@ if (!readBack.startsWith(PREFIX)) {
 const decoded = Buffer.from(readBack.slice(PREFIX.length), "base64").toString("utf8")
 const parsed  = JSON.parse(decoded) as typeof metadata
 
-const endpointOk = parsed.services[0].endpoint.endsWith("/mcp")
-const toolsOk    = parsed.services[0].mcpTools.length === 21
-const typeOk     = parsed.type === "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
+const endpointOk     = parsed.services[0].endpoint.endsWith("/mcp")
+const toolsOk        = parsed.services[0].mcpTools.length === 21
+const typeOk         = parsed.type === "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
+const capabilitiesOk = Array.isArray(parsed.services[0].capabilities) && parsed.services[0].capabilities.includes("tools")
+const versionOk      = parsed.services[0].version === "2024-11-05"
+const x402Ok         = parsed.x402Support === true
+const trustOk        = Array.isArray(parsed.supportedTrust)
+const updatedAtOk    = parsed.updatedAt === 1781481600
 
-console.log(`type field correct                  : ${typeOk     ? "PASS" : "FAIL"}`)
-console.log(`services[0].endpoint ends with /mcp : ${endpointOk ? "PASS" : "FAIL"} (${parsed.services[0].endpoint})`)
-console.log(`services[0].mcpTools.length === 21  : ${toolsOk    ? "PASS" : "FAIL"} (got ${parsed.services[0].mcpTools.length})`)
+console.log(`type field correct                  : ${typeOk         ? "PASS" : "FAIL"}`)
+console.log(`services[0].endpoint ends with /mcp : ${endpointOk     ? "PASS" : "FAIL"} (${parsed.services[0].endpoint})`)
+console.log(`services[0].mcpTools.length === 21  : ${toolsOk        ? "PASS" : "FAIL"} (got ${parsed.services[0].mcpTools.length})`)
+console.log(`services[0].capabilities = ["tools"]: ${capabilitiesOk ? "PASS" : "FAIL"}`)
+console.log(`services[0].version = "2024-11-05"  : ${versionOk      ? "PASS" : "FAIL"}`)
+console.log(`x402Support = true                  : ${x402Ok         ? "PASS" : "FAIL"}`)
+console.log(`supportedTrust is array             : ${trustOk        ? "PASS" : "FAIL"}`)
+console.log(`updatedAt = 1781481600              : ${updatedAtOk    ? "PASS" : "FAIL"}`)
 
-if (!typeOk || !endpointOk || !toolsOk) {
+if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk) {
   console.error("Roundtrip FAILED — aborting on-chain update")
   process.exit(1)
 }
