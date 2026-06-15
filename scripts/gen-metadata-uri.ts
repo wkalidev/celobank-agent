@@ -1,22 +1,11 @@
 /**
  * Generate ERC-8004 registration-v1 metadata data URI, write to metadata-uri.txt,
- * verify the roundtrip, then update the on-chain endpoint to the data URI so that
- * 8004scan can decode the full schema (type, services, MCP health-check endpoint).
+ * and verify the roundtrip. Does NOT update on-chain — paste metadata-uri.txt content
+ * into the 8004scan Management UI to update the on-chain endpoint manually.
  *
  * Run: npx tsx scripts/gen-metadata-uri.ts
  */
-import "dotenv/config"
 import { writeFileSync, readFileSync } from "fs"
-import { createWalletClient, createPublicClient, http } from "viem"
-import { privateKeyToAccount } from "viem/accounts"
-import { celo } from "viem/chains"
-
-// ── Contract constants ────────────────────────────────────────────────────────
-const CONTRACT = "0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" as `0x${string}`
-const CUSD     = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as `0x${string}`
-const artifact = JSON.parse(
-  readFileSync("artifacts/contracts/CeloBankAgent.sol/CeloBankAgent.json", "utf-8"),
-)
 
 // ── MCP tools (21) — must match server.ts MCP_TOOLS ──────────────────────────
 const MCP_TOOLS = [
@@ -93,6 +82,11 @@ const metadata = {
       domains:  OASF_DOMAINS,
       endpoint: "https://github.com/agntcy/oasf/",
     },
+    {
+      name:     "A2A",
+      endpoint: "https://celobank-agent-production.up.railway.app/.well-known/agent-card.json",
+      version:  "0.3.0",
+    },
   ],
   // ASCII-only — avoids Windows console encoding corruption in transit
   description:
@@ -135,6 +129,7 @@ const versionOk      = parsed.services[0].version === "2024-11-05"
 const x402Ok         = parsed.x402Support === true
 const trustOk        = Array.isArray(parsed.supportedTrust)
 const updatedAtOk    = parsed.updatedAt === 1781481600
+const a2aOk          = parsed.services[2]?.name === "A2A" && parsed.services[2]?.endpoint.includes("agent-card.json")
 
 console.log(`type field correct                  : ${typeOk         ? "PASS" : "FAIL"}`)
 console.log(`services[0].endpoint ends with /mcp : ${endpointOk     ? "PASS" : "FAIL"} (${parsed.services[0].endpoint})`)
@@ -144,61 +139,11 @@ console.log(`services[0].version = "2024-11-05"  : ${versionOk      ? "PASS" : "
 console.log(`x402Support = true                  : ${x402Ok         ? "PASS" : "FAIL"}`)
 console.log(`supportedTrust is array             : ${trustOk        ? "PASS" : "FAIL"}`)
 console.log(`updatedAt = 1781481600              : ${updatedAtOk    ? "PASS" : "FAIL"}`)
+console.log(`services[2] = A2A agent-card        : ${a2aOk          ? "PASS" : "FAIL"}`)
 
-if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk) {
-  console.error("Roundtrip FAILED — aborting on-chain update")
+if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk || !a2aOk) {
+  console.error("Roundtrip FAILED")
   process.exit(1)
 }
-console.log("Roundtrip OK\n")
-
-// ── On-chain update ───────────────────────────────────────────────────────────
-async function updateOnChain() {
-  const rawKey    = process.env.PRIVATE_KEY!.trim()
-  const privateKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as `0x${string}`
-  const account   = privateKeyToAccount(privateKey)
-
-  const publicClient = createPublicClient({ chain: celo, transport: http() })
-  const walletClient = createWalletClient({ account, chain: celo, transport: http() })
-
-  console.log(`Wallet  : ${account.address}`)
-  console.log(`Contract: ${CONTRACT}`)
-
-  // Resolve the active tokenId for this wallet
-  const tokenId = await publicClient.readContract({
-    address: CONTRACT,
-    abi:     artifact.abi,
-    functionName: "agentByAddress",
-    args:    [account.address],
-  }) as bigint
-
-  if (tokenId === 0n) {
-    console.error("No active token found for this wallet — run scripts/update-metadata.ts first")
-    process.exit(1)
-  }
-  console.log(`TokenId : ${tokenId}`)
-
-  // Store the data URI as the on-chain endpoint so 8004scan can decode the full schema
-  console.log("\nSubmitting updateEndpoint...")
-  const hash = await walletClient.writeContract({
-    address:     CONTRACT,
-    abi:         artifact.abi,
-    functionName: "updateEndpoint",
-    args:        [tokenId, dataUri],
-    account,
-    feeCurrency: CUSD,
-  } as any)
-
-  console.log(`TX submitted: https://celoscan.io/tx/${hash}`)
-  console.log("Waiting for confirmation...")
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  console.log(`\nOn-chain endpoint updated!`)
-  console.log(`  Block : ${receipt.blockNumber}`)
-  console.log(`  TX    : https://celoscan.io/tx/${hash}`)
-  console.log(`  8004  : https://8004scan.xyz/agents/${account.address}`)
-}
-
-updateOnChain().catch(e => {
-  console.error("On-chain update failed:", e.message ?? e)
-  process.exit(1)
-})
+console.log("Roundtrip OK")
+console.log("\nmetadata-uri.txt written. Update on-chain manually via the 8004scan Management UI.")

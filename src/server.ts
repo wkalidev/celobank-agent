@@ -731,6 +731,81 @@ app.get("/catalog", (_, res) => {
   })
 })
 
+// ─── GET /.well-known/agent-card.json — A2A AgentCard 0.3.0 ─────────────────
+app.get("/.well-known/agent-card.json", (_, res) => {
+  res.json({
+    protocolVersion:    "0.3.0",
+    name:               "CeloBank Agent",
+    description:        "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 21 callable tools. x402 payment supported.",
+    version:            "2.0.0",
+    url:                "https://celobank-agent-production.up.railway.app",
+    provider: {
+      organization: "wkalidev",
+      url:          "https://github.com/wkalidev",
+    },
+    documentationUrl:   "https://github.com/wkalidev/celobank-agent",
+    iconUrl:            "https://celobank-agent.vercel.app/celobank_splash.png",
+    preferredTransport: "HTTP+JSON",
+    defaultInputModes:  ["text/plain"],
+    defaultOutputModes: ["text/plain"],
+    capabilities: {
+      streaming:              false,
+      pushNotifications:      false,
+      stateTransitionHistory: false,
+    },
+    skills: [
+      {
+        id:          "defi-swap",
+        name:        "Universal Token Swap",
+        description: "Swap any of 26+ tokens on Celo. Routes CELO⇔stablecoins through Mento V2 (~0.1–0.3% slippage), all other pairs through Uniswap V3 (0.3% fee). Supports cUSD, cEUR, KESm, NGNm, USDC, USDT, WETH, stCELO, UBE, and more.",
+        tags:        ["defi", "swap", "mento", "uniswap", "celo", "stablecoin"],
+      },
+      {
+        id:          "aave-lending",
+        name:        "Aave V3 Lending",
+        description: "Supply cUSD or USDC to Aave V3 on Celo to earn yield (~3–5% APY, variable). Read lending position including collateral, debt, and health factor.",
+        tags:        ["defi", "lending", "aave", "yield", "cusd", "usdc"],
+      },
+      {
+        id:          "celo-staking",
+        name:        "CELO Liquid Staking",
+        description: "Stake CELO to receive stCELO and earn ~4% APY. Liquid staking with no lockup period. Unstaking has a ~3-day unbonding period. Read staking position and current APY.",
+        tags:        ["staking", "celo", "stcelo", "yield", "liquid-staking"],
+      },
+      {
+        id:          "token-launch",
+        name:        "ERC-20 Token Launch",
+        description: "Deploy a new ERC-20 token on Celo Mainnet in one transaction via CeloBank TokenFactory (0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e). Set name, symbol, and total supply. List and explore previously launched tokens.",
+        tags:        ["tokenization", "erc20", "token-factory", "celo", "deploy"],
+      },
+      {
+        id:          "gooddollar-identity",
+        name:        "GoodDollar G$ Identity & Rewards",
+        description: "Check G$ (GoodDollar) balance and human verification status via GoodDollar IdentityV4. Read CeloBank engagement reward stats: users onboarded and total G$ distributed. CeloBank earns $0.50 G$ per verified user referred.",
+        tags:        ["gooddollar", "identity", "ubi", "g$", "engagement-rewards", "financial-inclusion"],
+      },
+      {
+        id:          "portfolio-analysis",
+        name:        "Portfolio Analysis & Trade Ideas",
+        description: "Read full wallet portfolio (CELO + all ERC-20 balances). Get real-time prices and 24h change for all Celo tokens. Generate personalized DeFi trade ideas and yield recommendations from a connected wallet.",
+        tags:        ["portfolio", "prices", "trade-ideas", "analysis", "celo", "defi"],
+      },
+      {
+        id:          "remittance",
+        name:        "Send & Bridge",
+        description: "Send native CELO to any address. Get bridge routing guidance for moving tokens to/from Celo via Squid Router, Jumper Exchange, and Wormhole.",
+        tags:        ["remittance", "send", "bridge", "celo", "payments", "financial-inclusion"],
+      },
+      {
+        id:          "proof-of-presence",
+        name:        "DailyDrop Proof of Presence",
+        description: "Check DailyDrop daily check-in streak status, badge eligibility, and reward progress for any address. Proof-of-presence streak tracking on Celo.",
+        tags:        ["proof-of-presence", "streak", "dailydrop", "engagement", "celo"],
+      },
+    ],
+  })
+})
+
 // ─── Serve UI (production) ────────────────────────────────────────────────────
 const uiDist = join(__dirname, "..", "ui", "dist")
 if (existsSync(uiDist)) {
@@ -758,7 +833,8 @@ if (existsSync(uiDist)) {
   // SPA fallback — serve index.html for any non-API route
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/mcp") ||
-        req.path.startsWith("/health") || req.path.startsWith("/docs")) return next()
+        req.path.startsWith("/health") || req.path.startsWith("/docs") ||
+        req.path.startsWith("/.well-known")) return next()
     res.sendFile(join(uiDist, "index.html"))
   })
 }
