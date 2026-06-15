@@ -171,14 +171,16 @@ Language detection runs server-side in `src/server.ts` via a `detectLanguage()` 
 
 21 tools are exposed to the AI via the Anthropic tool schema (`anthropicTools` in `src/agent/agent.ts`), organized across six source modules:
 
-| Module | Tools |
-|--------|-------|
-| `tools/celo.ts` | `get_balance`, `send_celo`, `get_celo_price` |
+| Module | Tools exposed to model |
+|--------|------------------------|
+| `tools/celo.ts` | `get_balance`, `send_celo` *(+ `get_celo_price` — imported but not in `anthropicTools`; internal helper only)* |
 | `tools/defi.ts` | `get_portfolio`, `get_multi_price`, `swap_celo`, `swap_tokens`, `get_aave_position`, `save_cusd` |
 | `tools/staking.ts` | `stake_celo`, `unstake_celo`, `get_staking_position`, `get_yield_options` |
 | `tools/advanced.ts` | `trade_ideas`, `get_market_overview`, `get_bridge_info`, `get_dailydrop_status` |
 | `tools/launch.ts` | `launch_token`, `get_tokens`, `get_trending_tokens` |
 | `tools/gooddollar.ts` | `check_gooddollar`, `get_engagement_rewards` |
+
+`get_celo_price` exists in the tool registry but is not listed in `anthropicTools` — the model cannot call it directly. The callable tool count is 21.
 
 ### 3.5 Deployment
 
@@ -273,7 +275,7 @@ CeloBank Agent is deployed as a **Farcaster Mini App** using `@farcaster/miniapp
 
 ### 5.3 Self Protocol
 
-CeloBank Agent is registered with Self Protocol for ZK-verified on-chain identity. A Self Agent ID badge is visible in the UI. Self Protocol allows users to verify real-world identity attributes (nationality, age, etc.) using zero-knowledge proofs derived from passport/ID document data, without exposing the underlying document.
+CeloBank Agent displays a **Self Agent ID badge** in the UI (sidebar and desktop panel) indicating association with Self Protocol's ZK-identity standard. The badge is a static UI element — there is no active verification flow, no in-conversation identity check, and no Self SDK call in the current codebase. It signals intent and ecosystem alignment; deeper Self Protocol integration (in-agent ZK verification) is on the roadmap.
 
 ### 5.4 Bridge Routing
 
