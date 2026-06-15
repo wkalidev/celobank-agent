@@ -507,6 +507,9 @@ console.log(TOKENS.USDC.decimals)  // 6
 
 ## Changelog
 
+### v1.0.9
+- 📖 Updated README: getCatalog() in methods table, v1.0.7/v1.0.8 changelog entries
+
 ### v1.0.8
 - ✨ `getCatalog(params?)` — fetch the live `/catalog` endpoint and return a fully-typed `CatalogResult`
 - 📦 Added `CatalogResult` and `CatalogTool` exported types
