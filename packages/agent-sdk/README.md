@@ -83,6 +83,7 @@ console.log("Agent wallet:", sdk.address)
 | `claimDrop()` | Claim 10 DROP tokens after a 7-day streak |
 | `checkGoodDollar(params?)` | Read G$ balance + GoodDollar human verification status ✨ |
 | `getEngagementRewards(params?)` | Read engagement reward stats (users onboarded, G$ distributed) ✨ |
+| `getCatalog(params?)` | Fetch the live `/catalog` — tool list, pricing, idempotency, spend limits, failure/refund schema ✨ |
 
 ---
 
@@ -505,6 +506,13 @@ console.log(TOKENS.USDC.decimals)  // 6
 ---
 
 ## Changelog
+
+### v1.0.8
+- ✨ `getCatalog(params?)` — fetch the live `/catalog` endpoint and return a fully-typed `CatalogResult`
+- 📦 Added `CatalogResult` and `CatalogTool` exported types
+
+### v1.0.7
+- ✨ `/catalog` endpoint on the server: x402 machine-readable service catalog with tool list, pricing, idempotency contract, spend limits, and failure/refund state schema
 
 ### v1.0.6
 - ✨ `checkGoodDollar(params?)` — read G$ balance + `isVerified`/`getIdentityExpiry` from GoodDollar IdentityV4 on Celo
