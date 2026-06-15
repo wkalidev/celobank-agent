@@ -88,21 +88,51 @@ const AGENT_ADDRESS = account.address
 // ─── Language Detection ───────────────────────────────────────────────────────
 function detectLanguage(text: string): string {
   const t = text.toLowerCase()
+  // Non-Latin unicode scripts — unambiguous, checked first
+  if (/[ऀ-ॿ]/.test(t)) return "hindi"
+  if (/[ঀ-৿]/.test(t)) return "bengali"
+  if (/[ሀ-፿]/.test(t)) return "amharic"
+  if (/[Ѐ-ӿ]/.test(t)) return "russian"
+  if (/[一-鿿㐀-䶿]/.test(t)) return "chinese"
+  if (/[؀-ۿ]/.test(t)) return "arabic"
+  // Latin with script-unique diacritics (checked before French to avoid ã/ä collisions)
+  if (/[ơưđ]/.test(t) || /\b(không|của|với|được|những|tôi|bạn)\b/.test(t)) return "vietnamese"
+  if (/[ẹọṣ]/.test(t)) return "yoruba"
+  if (/[ãõ]/.test(t) || /\b(você|obrigado|não|isso|meu|minha|nossa|olá|quanto)\b/.test(t)) return "portuguese"
+  if (/ß/.test(t) || (/[äöü]/.test(t) && /\b(ich|nicht|sind|haben|wird|für|das|der|die|mit|wie|was|bitte|danke|kein|oder|auch|aber)\b/.test(t))) return "german"
+  // Existing Latin-script checks — unchanged
   if (/[àâäéèêëîïôùûüç]/.test(t) || /\b(je|tu|il|nous|vous|ils|est|les|des|une|pour|avec|sur|mon|ma|mes|solde|envoie|quel|quelle)\b/.test(t)) return "french"
   if (/\b(io|tu|lui|noi|voi|loro|sono|buona|sera|grazie|prego|mio|mia)\b/.test(t)) return "italian"
   if (/\b(yo|tú|él|nosotros|es|los|las|una|para|con|hola|gracias|mi|saldo)\b/.test(t)) return "spanish"
-  if (/[؀-ۿ]/.test(t)) return "arabic"
   if (/\b(mimi|wewe|yeye|sisi|ninyi|wao|habari|asante|karibu)\b/.test(t)) return "swahili"
+  // New Latin-script vocabulary checks
+  if (/[şğ]/.test(t) || /\b(için|değil|evet|hayır|teşekkür|nasıl|merhaba)\b/.test(t)) return "turkish"
+  if (/\b(saya|anda|tidak|dengan|untuk|yang|ini|itu|bisa|juga|sudah|akan|selamat|terima|berapa)\b/.test(t)) return "indonesian"
+  if (/\b(ako|ikaw|siya|kami|kayo|sila|mga|nang|salamat|kamusta|paano|bakit|talaga)\b/.test(t)) return "tagalog"
+  if (/\b(yana|tana|suna|kuma|amma|babu|cikin|sannan|yaya|lafiya)\b/.test(t)) return "hausa"
   return "english"
 }
 
 const langInstructions: Record<string, string> = {
-  french:  "Réponds en français.",
-  italian: "Rispondi in italiano.",
-  spanish: "Responde en español.",
-  arabic:  "أجب باللغة العربية.",
-  swahili: "Jibu kwa Kiswahili.",
-  english: "Respond in English.",
+  french:     "Réponds en français.",
+  italian:    "Rispondi in italiano.",
+  spanish:    "Responde en español.",
+  arabic:     "أجب باللغة العربية.",
+  swahili:    "Jibu kwa Kiswahili.",
+  english:    "Respond in English.",
+  portuguese: "Responda em português.",
+  chinese:    "请用中文回答。",
+  hindi:      "कृपया हिंदी में जवाब दें।",
+  bengali:    "অনুগ্রহ করে বাংলায় উত্তর দিন।",
+  yoruba:     "Jọwọ dáhùn ní èdè Yorùbá.",
+  hausa:      "Don Allah amsa da Hausa.",
+  amharic:    "እባክዎ በአማርኛ ይመልሱ።",
+  indonesian: "Tolong jawab dalam Bahasa Indonesia.",
+  german:     "Bitte antworte auf Deutsch.",
+  russian:    "Пожалуйста, отвечай по-русски.",
+  turkish:    "Lütfen Türkçe yanıtla.",
+  vietnamese: "Vui lòng trả lời bằng tiếng Việt.",
+  tagalog:    "Mangyaring sumagot sa Filipino.",
 }
 
 // ─── Swagger UI ───────────────────────────────────────────────────────────────
@@ -170,7 +200,7 @@ This is the recommended approach — the agent never holds user funds.
       post: {
         tags: ["Agent"],
         summary: "Send a message to the AI agent",
-        description: "The agent understands natural language in 8 languages and executes DeFi actions on Celo Mainnet. Rate limited to 20 req/min.",
+        description: "The agent understands natural language in 19 languages and executes DeFi actions on Celo Mainnet. Rate limited to 20 req/min.",
         requestBody: {
           required: true,
           content: {

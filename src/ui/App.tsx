@@ -64,6 +64,17 @@ const LANGUAGES = [
   { flag: "🇮🇹", code: "it", label: "Italiano" },
   { flag: "🇵🇹", code: "pt", label: "Português" },
   { flag: "🇨🇳", code: "zh", label: "中文" },
+  { flag: "🇮🇳", code: "hi", label: "हिंदी" },
+  { flag: "🇧🇩", code: "bn", label: "বাংলা" },
+  { flag: "🇳🇬", code: "yo", label: "Yorùbá" },
+  { flag: "🇳🇬", code: "ha", label: "Hausa" },
+  { flag: "🇪🇹", code: "am", label: "አማርኛ" },
+  { flag: "🇮🇩", code: "id", label: "Indonesia" },
+  { flag: "🇩🇪", code: "de", label: "Deutsch" },
+  { flag: "🇷🇺", code: "ru", label: "Русский" },
+  { flag: "🇹🇷", code: "tr", label: "Türkçe" },
+  { flag: "🇻🇳", code: "vi", label: "Tiếng Việt" },
+  { flag: "🇵🇭", code: "tl", label: "Filipino" },
 ]
 
 const GLITCH_CHARS = "!<>-_\\/[]{}—=+*^?#@$%&"
