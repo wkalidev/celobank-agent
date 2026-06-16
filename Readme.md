@@ -98,7 +98,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 
 | Feature | Description |
 |---------|-------------|
-| 💬 **Natural Language** | Chat in 8 languages: FR, EN, ES, AR, SW, IT, PT, ZH |
+| 💬 **Natural Language** | Chat in 19 languages: FR, EN, ES, AR, SW, IT, PT, ZH, HI, BN, YO, HA, AM, ID, DE, RU, TR, VI, TL |
 | 💸 **Send Money** | Transfer CELO instantly — user signs their own TX |
 | 📊 **Real-time Prices** | Live prices + 24h change for all Celo tokens |
 | 🔄 **Universal Swap** | 26+ tokens: Mento V2 (CELO ↔ stablecoins) + Uniswap V3 (all other pairs) |
