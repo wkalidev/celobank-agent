@@ -408,7 +408,7 @@ function LeftSidebarContent({ actions, selectedLang, setSelectedLang, streak, ch
       </div>
       <div style={{ padding: "10px", borderRadius: 3, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)" }}>
         <div style={{ fontSize: 9, color: "#6366f1", letterSpacing: "0.1em", marginBottom: 4 }}>🔐 SELF AGENT ID</div>
-        <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.55, lineHeight: 1.9 }}>VERIFIED ONCHAIN<br />PRIVACY-FIRST ZK<br />IDENTITY PROOF</div>
+        <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.55, lineHeight: 1.9 }}>NOT_YET_VERIFIED<br />INTEGRATION<br />IN_PROGRESS</div>
       </div>
       {address && (
         <div style={{ padding: "10px", borderRadius: 3, background: "rgba(0,255,159,0.03)", border: "1px solid rgba(0,255,159,0.18)" }}>
@@ -954,7 +954,7 @@ export default function App() {
           </div>
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.18)" }}>
             <div style={{ fontSize: 8, color: "#6366f1", opacity: 0.6, marginBottom: 4 }}>SELF_AGENT</div>
-            <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.9, opacity: 0.72 }}>ZK_VERIFIED<br />PRIVACY_FIRST<br />ONCHAIN_ID</div>
+            <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.9, opacity: 0.72 }}>NOT_YET_VERIFIED<br />SETUP_IN_PROGRESS<br />PENDING_OWNER</div>
           </div>
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(255,190,11,0.05)", border: "1px solid rgba(255,190,11,0.18)" }}>
             <div style={{ fontSize: 8, color: "#ffbe0b", opacity: 0.6, marginBottom: 4 }}>IMPACT</div>

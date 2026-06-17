@@ -9,7 +9,7 @@
 [![npm](https://img.shields.io/badge/npm-@celobank%2Fagent--sdk-CB3837?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@celobank/agent-sdk)
 [![Celo](https://img.shields.io/badge/Built%20on-Celo-35D07F?style=for-the-badge)](https://celo.org)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Deployed-FCFF52?style=for-the-badge)](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
-[![Self Agent](https://img.shields.io/badge/Self_Agent-Verified-6366f1?style=for-the-badge)](https://app.ai.self.xyz/agents)
+[![Self Agent](https://img.shields.io/badge/Self_Agent_ID-Integration_In_Progress-6366f1?style=for-the-badge)](https://github.com/selfxyz/self-agent-id)
 [![MiniPay](https://img.shields.io/badge/MiniPay-Compatible-35D07F?style=for-the-badge)](https://minipay.opera.com)
 [![GoodBuilders](https://img.shields.io/badge/GoodBuilders-Season%204-00C853?style=for-the-badge)](https://celobuilders.xyz/hackathons/celo-onchain-agents)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
@@ -111,7 +111,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | 🚀 **Token Launcher** | Deploy any ERC20 token on Celo in one transaction — name, symbol, supply |
 | 🌱 **GoodDollar G$** | Check G$ balance, human verification status + referral engagement rewards |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity |
-| 🔐 **Self Agent ID** | ZK-verified onchain identity via Self Protocol |
+| 🔐 **Self Agent ID** | ZK-identity binding via Self Protocol (integration in progress — not yet verified) |
 | 📱 **MiniPay Compatible** | Auto-detect & auto-connect — zero friction for 15M+ users |
 | 🌱 **G$ Button in UI** | One-tap G$ status check — balance, verification, referral reward stats |
 | ⚡ **Sub-cent fees** | Gas fees under $0.001 on Celo |
@@ -329,7 +329,7 @@ User (any language, any device)
 - **AI**: Anthropic Claude Sonnet 4.6 (primary) / Groq LLaMA 3.3-70b (fallback)
 - **On-chain**: viem v2
 - **DeFi**: Mento V2, Aave V3, Staked CELO
-- **Identity**: ERC-8004 + Self Protocol (ZK-verified)
+- **Identity**: ERC-8004 + Self Protocol (integration in progress)
 - **UI**: React + Vite + wagmi + RainbowKit
 - **API**: Express.js
 - **Deploy**: Vercel (UI) + Railway (API)
