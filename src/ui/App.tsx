@@ -32,6 +32,7 @@ interface StreakData {
 interface Message   { role: "user" | "agent"; content: string; timestamp: Date }
 interface UnsignedTx { to: `0x${string}`; data: `0x${string}`; value?: string; chainId: number; description: string }
 interface PrepareResult { success: boolean; action: string; userAddress: string; transactions: UnsignedTx[]; summary: string; error?: string }
+interface SelfAgentStatus { registered: boolean; isVerified?: boolean; agentId?: string; agentAddress?: string; network?: string; ownerAddress?: string }
 
 const QUICK_ACTIONS = [
   { label: "⬡ PRIX CELO",  msg: "Quel est le prix du CELO en ce moment ?",  color: "#00ff9f" },
@@ -385,7 +386,11 @@ function InputBar({ value, onChange, onSend, loading, compact = false }: {
 }
 
 // ─── Sidebar Content (shared between desktop and tablet drawer) ───────────────
-function LeftSidebarContent({ actions, selectedLang, setSelectedLang, streak, checking, claiming, doClaimReward, sendMessage, address, messages }: any) {
+function LeftSidebarContent({ actions, selectedLang, setSelectedLang, streak, checking, claiming, doClaimReward, sendMessage, address, messages, selfAgentStatus, onStartVerification }: any) {
+  const isOwner = address && selfAgentStatus?.ownerAddress &&
+    address.toLowerCase() === selfAgentStatus.ownerAddress.toLowerCase()
+  const selfVerified = selfAgentStatus?.registered && selfAgentStatus?.isVerified
+
   return (
     <>
       <div style={{ fontSize: 9, color: "#00ff9f", opacity: 0.35, letterSpacing: "0.15em", marginBottom: 8, borderBottom: "1px solid rgba(0,255,159,0.1)", paddingBottom: 6 }}>// QUICK_ACTIONS</div>
@@ -408,7 +413,15 @@ function LeftSidebarContent({ actions, selectedLang, setSelectedLang, streak, ch
       </div>
       <div style={{ padding: "10px", borderRadius: 3, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)" }}>
         <div style={{ fontSize: 9, color: "#6366f1", letterSpacing: "0.1em", marginBottom: 4 }}>🔐 SELF AGENT ID</div>
-        <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.55, lineHeight: 1.9 }}>NOT_YET_VERIFIED<br />INTEGRATION<br />IN_PROGRESS</div>
+        {selfVerified
+          ? <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.8, lineHeight: 1.9 }}>VERIFIED ✓<br />ZK_PROOF_ONCHAIN<br />ID #{selfAgentStatus?.agentId}</div>
+          : <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.55, lineHeight: 1.9 }}>NOT_YET_VERIFIED<br />INTEGRATION<br />IN_PROGRESS</div>
+        }
+        {isOwner && !selfVerified && onStartVerification && (
+          <button onClick={onStartVerification} style={{ marginTop: 6, width: "100%", padding: "5px", borderRadius: 3, fontSize: 9, fontFamily: "monospace", letterSpacing: "0.08em", cursor: "pointer", background: "rgba(99,102,241,0.14)", border: "1px solid rgba(99,102,241,0.45)", color: "#6366f1", transition: "all 0.18s" }}>
+            ▶ START VERIFICATION
+          </button>
+        )}
       </div>
       {address && (
         <div style={{ padding: "10px", borderRadius: 3, background: "rgba(0,255,159,0.03)", border: "1px solid rgba(0,255,159,0.18)" }}>
@@ -515,6 +528,8 @@ export default function App() {
   const [streak, setStreak] = useState<StreakData>({ current: 0, best: 0, total: 0, canCheckIn: true, canClaim: false, nextCheckIn: 0 })
   const [checking, setChecking] = useState(false)
   const [claiming, setClaiming] = useState(false)
+  const [selfAgentStatus, setSelfAgentStatus] = useState<SelfAgentStatus | null>(null)
+  const [selfRegSession, setSelfRegSession] = useState<{ deepLink: string; humanInstructions: string[] } | null>(null)
 
   // Use a ref so loadStreak always reads the latest publicClient without it
   // being a useCallback dependency (avoids re-render loop on unstable wagmi refs).
@@ -579,6 +594,32 @@ export default function App() {
       return `❌ Claim failed: ${err instanceof Error ? err.message : String(err)}`
     } finally { setClaiming(false) }
   }, [address, walletClient, publicClient, streak])
+
+  useEffect(() => {
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+    fetch(`${API_URL}/api/self-agent-status`)
+      .then(r => r.json())
+      .then(setSelfAgentStatus)
+      .catch(() => setSelfAgentStatus({ registered: false }))
+  }, [])
+
+  const handleStartVerification = useCallback(async () => {
+    if (!address || !walletClient) return
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+    try {
+      const sig = await (walletClient as any).signMessage({ message: "CeloBank Agent: Initiate Self Agent ID Registration", account: address })
+      const res = await fetch(`${API_URL}/api/self-agent-register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerAddress: address, signature: sig }),
+      })
+      const data = await res.json()
+      if (data.deepLink) setSelfRegSession({ deepLink: data.deepLink, humanInstructions: data.humanInstructions ?? [] })
+      else setMessages(prev => [...prev, { role: "agent", content: `❌ Registration error: ${data.error}`, timestamp: new Date() }])
+    } catch (err) {
+      setMessages(prev => [...prev, { role: "agent", content: `❌ ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }])
+    }
+  }, [address, walletClient])
 
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
     const wc = (walletClientRef.current ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
@@ -838,7 +879,7 @@ export default function App() {
             <>
               <div onClick={() => setDrawerOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10, backdropFilter: "blur(2px)" }} />
               <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 230, background: "rgba(2,4,8,0.98)", borderRight: "1px solid rgba(0,255,159,0.2)", padding: "14px 12px", zIndex: 11, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, animation: "fadeIn 0.18s ease" }}>
-                <LeftSidebarContent actions={QUICK_ACTIONS} selectedLang={selectedLang} setSelectedLang={setSelectedLang} streak={streak} checking={checking} claiming={claiming} doClaimReward={doClaimReward} sendMessage={(m: string) => { sendMessage(m); setDrawerOpen(false) }} address={address} messages={messages} />
+                <LeftSidebarContent actions={QUICK_ACTIONS} selectedLang={selectedLang} setSelectedLang={setSelectedLang} streak={streak} checking={checking} claiming={claiming} doClaimReward={doClaimReward} sendMessage={(m: string) => { sendMessage(m); setDrawerOpen(false) }} address={address} messages={messages} selfAgentStatus={selfAgentStatus} onStartVerification={handleStartVerification} />
               </div>
             </>
           )}
@@ -917,7 +958,7 @@ export default function App() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
         {/* Left sidebar */}
         <div style={{ width: 224, borderRight: "1px solid rgba(0,255,159,0.12)", padding: "16px 12px", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, overflowY: "auto", background: "rgba(0,255,159,0.018)" }}>
-          <LeftSidebarContent actions={QUICK_ACTIONS} selectedLang={selectedLang} setSelectedLang={setSelectedLang} streak={streak} checking={checking} claiming={claiming} doClaimReward={doClaimReward} sendMessage={sendMessage} address={address} messages={messages} />
+          <LeftSidebarContent actions={QUICK_ACTIONS} selectedLang={selectedLang} setSelectedLang={setSelectedLang} streak={streak} checking={checking} claiming={claiming} doClaimReward={doClaimReward} sendMessage={sendMessage} address={address} messages={messages} selfAgentStatus={selfAgentStatus} onStartVerification={handleStartVerification} />
         </div>
 
         {/* Chat */}
@@ -954,7 +995,10 @@ export default function App() {
           </div>
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.18)" }}>
             <div style={{ fontSize: 8, color: "#6366f1", opacity: 0.6, marginBottom: 4 }}>SELF_AGENT</div>
-            <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.9, opacity: 0.72 }}>NOT_YET_VERIFIED<br />SETUP_IN_PROGRESS<br />PENDING_OWNER</div>
+            {selfAgentStatus?.registered && selfAgentStatus?.isVerified
+              ? <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.9, opacity: 0.85 }}>VERIFIED ✓<br />ZK_PROOF_ONCHAIN<br />ID #{selfAgentStatus.agentId}</div>
+              : <div style={{ fontSize: 10, color: "#6366f1", lineHeight: 1.9, opacity: 0.72 }}>NOT_YET_VERIFIED<br />SETUP_IN_PROGRESS<br />PENDING_OWNER</div>
+            }
           </div>
           <div style={{ padding: "10px", borderRadius: 3, background: "rgba(255,190,11,0.05)", border: "1px solid rgba(255,190,11,0.18)" }}>
             <div style={{ fontSize: 8, color: "#ffbe0b", opacity: 0.6, marginBottom: 4 }}>IMPACT</div>
@@ -968,6 +1012,24 @@ export default function App() {
           </a>
         </div>
       </div>
+      {selfRegSession && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
+          <div style={{ maxWidth: 440, width: "90%", background: "#040810", border: "1px solid rgba(99,102,241,0.5)", borderRadius: 6, padding: 24, boxShadow: "0 0 40px rgba(99,102,241,0.2)" }}>
+            <div style={{ fontSize: 11, color: "#6366f1", letterSpacing: "0.14em", marginBottom: 12, fontWeight: 700 }}>🔐 SELF AGENT ID — START VERIFICATION</div>
+            <div style={{ fontSize: 10, color: "#6366f1", opacity: 0.7, marginBottom: 12, lineHeight: 1.8 }}>
+              {selfRegSession.humanInstructions.map((s, i) => <div key={i}>{s}</div>)}
+            </div>
+            <a href={selfRegSession.deepLink} target="_blank" rel="noreferrer"
+              style={{ display: "block", padding: "10px 16px", borderRadius: 3, background: "rgba(99,102,241,0.18)", border: "1px solid rgba(99,102,241,0.5)", color: "#6366f1", fontSize: 10, textAlign: "center", textDecoration: "none", letterSpacing: "0.1em", marginBottom: 10 }}>
+              ▶ OPEN IN SELF APP ↗
+            </a>
+            <div style={{ fontSize: 9, color: "#6366f1", opacity: 0.4, wordBreak: "break-all", marginBottom: 12 }}>{selfRegSession.deepLink}</div>
+            <button onClick={() => setSelfRegSession(null)} style={{ width: "100%", padding: "7px", borderRadius: 3, background: "transparent", border: "1px solid rgba(99,102,241,0.25)", color: "#6366f1", fontSize: 9, fontFamily: "monospace", cursor: "pointer", letterSpacing: "0.1em" }}>
+              CLOSE
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
