@@ -7,8 +7,10 @@ import { join, dirname } from "path"
 import { existsSync } from "fs"
 import { runAgent } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
+import { verifyMessage } from "viem"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
+import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
@@ -506,6 +508,58 @@ app.get("/api/v1/aave/:address", async (req, res) => {
       Get the Aave V3 position for address ${address}.`
     )
     try { res.json(JSON.parse(result)) } catch { res.json({ address, raw: result }) }
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
+  }
+})
+
+// ─── GET /api/self-agent-status ───────────────────────────────────────────────
+app.get("/api/self-agent-status", async (_req, res) => {
+  try {
+    const status = await getSelfAgentStatus()
+    const ownerAddress = process.env.SELF_AGENT_OWNER_ADDRESS || AGENT_ADDRESS
+    res.set("Cache-Control", "public, max-age=300")
+    res.json({ ...status, ownerAddress })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
+  }
+})
+
+const SELF_REGISTER_MESSAGE = "CeloBank Agent: Initiate Self Agent ID Registration"
+
+// ─── POST /api/self-agent-register (owner-only) ────────────────────────────
+app.post("/api/self-agent-register", async (req, res) => {
+  const { ownerAddress, signature } = req.body
+
+  if (!isValidAddress(ownerAddress)) {
+    return res.status(400).json({ error: "ownerAddress must be a valid Ethereum address" })
+  }
+  if (!signature || typeof signature !== "string") {
+    return res.status(400).json({ error: "signature is required" })
+  }
+
+  const ownerRef = process.env.SELF_AGENT_OWNER_ADDRESS || AGENT_ADDRESS
+  if (ownerAddress.toLowerCase() !== ownerRef.toLowerCase()) {
+    return res.status(403).json({ error: "Unauthorized: address is not the agent owner" })
+  }
+
+  try {
+    const valid = await verifyMessage({
+      address: ownerAddress as `0x${string}`,
+      message: SELF_REGISTER_MESSAGE,
+      signature: signature as `0x${string}`,
+    })
+    if (!valid) {
+      return res.status(403).json({ error: "Invalid signature" })
+    }
+
+    const session = await initiateRegistration(ownerAddress)
+    res.json({
+      deepLink: session.deepLink,
+      humanInstructions: session.humanInstructions,
+      agentAddress: session.agentAddress,
+      expiresAt: session.expiresAt,
+    })
   } catch (e) {
     res.status(500).json({ error: safeError(e) })
   }
