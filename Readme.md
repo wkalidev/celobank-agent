@@ -379,6 +379,21 @@ CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilder
 
 ---
 
+## 🔐 Self Agent ID
+
+CeloBank Agent integrates [Self Agent ID](https://github.com/selfxyz/self-agent-id), a ZK proof-of-human binding for autonomous agents that extends ERC-8004.
+
+Self Agent ID proves an autonomous agent is bound to a real verified human via a ZK passport proof, without revealing personal data. This satisfies the "ERC-8004 registration and Self Agent ID compliance" criterion in grant programs that score on-chain identity compliance independently.
+
+**Status**: see live badge in-app. Verification requires the agent owner to complete a one-time passport scan via the [Self mobile app](https://self.xyz) — the scaffolding (`@selfxyz/agent-sdk`, status endpoint, owner registration trigger) is live in this repo.
+
+Once the owner completes verification:
+- Self registry (Celo Mainnet): `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`
+- Network: Celo Mainnet (Chain ID 42220)
+- The in-app badge automatically updates to "VERIFIED ✓"
+
+---
+
 ## 📄 License
 
 MIT © 2026 [@wkalidev](https://github.com/wkalidev)

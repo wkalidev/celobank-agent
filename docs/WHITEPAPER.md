@@ -275,7 +275,26 @@ CeloBank Agent is deployed as a **Farcaster Mini App** using `@farcaster/miniapp
 
 ### 5.3 Self Protocol
 
-CeloBank Agent displays a **Self Agent ID badge** in the UI (sidebar and desktop panel) indicating association with Self Protocol's ZK-identity standard. The badge is a static UI element — there is no active verification flow, no in-conversation identity check, and no Self SDK call in the current codebase. It signals intent and ecosystem alignment; deeper Self Protocol integration (in-agent ZK verification) is on the roadmap.
+CeloBank Agent integrates [Self Agent ID](https://github.com/selfxyz/self-agent-id) (`@selfxyz/agent-sdk`), the ZK proof-of-human binding standard for autonomous agents extending ERC-8004.
+
+**Current implementation status:**
+
+- `src/lib/self-agent-id.ts` — installed SDK (`@selfxyz/agent-sdk` v0.2.1); `getSelfAgentStatus()` reads on-chain registration status via `SelfAgent.isRegistered()` + `SelfAgent.getInfo()`; `initiateRegistration()` calls `requestRegistration({ mode: "linked" })` to start a passport-scan session
+- `GET /api/self-agent-status` — public endpoint; returns `{ registered, isVerified, agentId, network }` from the on-chain registry on Celo Mainnet (Self registry: `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`); cached 5 minutes
+- `POST /api/self-agent-register` — owner-only endpoint; verifies EIP-191 wallet signature of `"CeloBank Agent: Initiate Self Agent ID Registration"` from the owner address, then calls `initiateRegistration()` and returns a `deepLink` + `humanInstructions` for the owner to complete the flow in the Self mobile app
+- **UI badge** — sidebar and desktop panel fetch `/api/self-agent-status` on mount and display the real on-chain state: `VERIFIED ✓` when `registered && isVerified`; `NOT_YET_VERIFIED` otherwise; owner-visible "Start Verification" button initiates the registration session
+
+**What remains for the owner to complete manually:**
+
+Registration completion requires a human action that cannot be automated. Once the code is deployed, the agent owner must:
+
+1. Connect the owner wallet in the app
+2. Click "Start Verification" (owner-only button, visible when owner wallet is connected)
+3. Open the returned Self app deep link and scan their passport
+4. The Self mobile app ZK-proves passport authenticity on-chain; the CeloBank Agent address is bound to the verified human address
+5. The badge automatically updates to "VERIFIED ✓" once on-chain state is confirmed
+
+Self Agent ID proves an autonomous agent is bound to a real verified human via a ZK passport proof, built as an extension of ERC-8004. This satisfies the "ERC-8004 registration and Self Agent ID compliance" criterion in Prezenti Frontier Round and similar grant programs that score on-chain identity compliance independently.
 
 ### 5.4 Bridge Routing
 
