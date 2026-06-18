@@ -14,7 +14,8 @@
     "ui": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev": "concurrently \"tsx src/server.ts\" \"vite\""
+    "dev": "concurrently \"tsx src/server.ts\" \"vite\"",
+    "self-agent-fix": "tsx scripts/self-agent-fix.ts"
   },
   "keywords": [],
   "author": "",
