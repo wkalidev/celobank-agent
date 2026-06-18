@@ -9,7 +9,7 @@
 [![npm](https://img.shields.io/badge/npm-@celobank%2Fagent--sdk-CB3837?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@celobank/agent-sdk)
 [![Celo](https://img.shields.io/badge/Built%20on-Celo-35D07F?style=for-the-badge)](https://celo.org)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Deployed-FCFF52?style=for-the-badge)](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1)
-[![Self Agent](https://img.shields.io/badge/Self_Agent_ID-Integration_In_Progress-6366f1?style=for-the-badge)](https://github.com/selfxyz/self-agent-id)
+[![Self Agent](https://img.shields.io/badge/Self_Agent_ID-Verified_%23171-6366f1?style=for-the-badge)](https://github.com/selfxyz/self-agent-id)
 [![MiniPay](https://img.shields.io/badge/MiniPay-Compatible-35D07F?style=for-the-badge)](https://minipay.opera.com)
 [![GoodBuilders](https://img.shields.io/badge/GoodBuilders-Season%204-00C853?style=for-the-badge)](https://celobuilders.xyz/hackathons/celo-onchain-agents)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
@@ -111,7 +111,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 | 🚀 **Token Launcher** | Deploy any ERC20 token on Celo in one transaction — name, symbol, supply |
 | 🌱 **GoodDollar G$** | Check G$ balance, human verification status + referral engagement rewards |
 | 🤖 **ERC-8004 Identity** | Verifiable on-chain agent identity |
-| 🔐 **Self Agent ID** | ZK-identity binding via Self Protocol (integration in progress — not yet verified) |
+| 🔐 **Self Agent ID** | ZK-identity binding via Self Protocol — agent #171 verified on-chain, proof valid until 2027-06-18 |
 | 📱 **MiniPay Compatible** | Auto-detect & auto-connect — zero friction for 15M+ users |
 | 🌱 **G$ Button in UI** | One-tap G$ status check — balance, verification, referral reward stats |
 | ⚡ **Sub-cent fees** | Gas fees under $0.001 on Celo |
@@ -385,12 +385,13 @@ CeloBank Agent integrates [Self Agent ID](https://github.com/selfxyz/self-agent-
 
 Self Agent ID proves an autonomous agent is bound to a real verified human via a ZK passport proof, without revealing personal data. This satisfies the "ERC-8004 registration and Self Agent ID compliance" criterion in grant programs that score on-chain identity compliance independently.
 
-**Status**: see live badge in-app. Verification requires the agent owner to complete a one-time passport scan via the [Self mobile app](https://self.xyz) — the scaffolding (`@selfxyz/agent-sdk`, status endpoint, owner registration trigger) is live in this repo.
+**Status: VERIFIED** — `isVerifiedAgent: true` confirmed on-chain. ZK passport proof submitted by the agent owner and recorded in the Self registry on 2026-06-18. Proof valid until **2027-06-18**.
 
-Once the owner completes verification:
-- Self registry (Celo Mainnet): `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`
+- Self registry (Celo Mainnet): [`0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`](https://celoscan.io/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944)
 - Network: Celo Mainnet (Chain ID 42220)
-- The in-app badge automatically updates to "VERIFIED ✓"
+- Agent ID: `#171`
+- Agent address: [`0x1d4f46f24e353acdf9a6cc40f8eeDfb9F3C51646`](https://celoscan.io/address/0x1d4f46f24e353acdf9a6cc40f8eeDfb9F3C51646)
+- The in-app badge shows "VERIFIED ✓" and reflects live on-chain status
 
 ---
 
