@@ -678,6 +678,29 @@ export default function App() {
     }
   }, [isMiniPay, address, connect, connectors])
 
+  // Enforce Celo mainnet (42220) when running inside MiniPay
+  useEffect(() => {
+    if (!isMiniPay) return
+    const ethereum = (window as any).ethereum
+    if (!ethereum?.request) return
+    ethereum.request({ method: "eth_chainId" })
+      .then((chainId: string) => {
+        if (parseInt(chainId, 16) !== 42220) {
+          ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xa4ec" }] }).catch(() => {})
+        }
+      })
+      .catch(() => {})
+  }, [isMiniPay])
+
+  // Parse incoming payment deeplinks: ?to=0x...&amount=1&token=cUSD
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const to = params.get("to") || params.get("address")
+    const amount = params.get("amount")
+    const token = params.get("token") || "cUSD"
+    if (to && amount) setInput(`send ${amount} ${token} to ${to}`)
+  }, [])
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 
   useEffect(() => {
@@ -826,6 +849,13 @@ export default function App() {
           </div>
         </div>
 
+        {/* Legal footer */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 20, padding: "5px 12px", background: "rgba(0,0,0,0.5)", borderTop: "1px solid rgba(0,255,159,0.06)", flexShrink: 0 }}>
+          <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>TERMS</a>
+          <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>PRIVACY</a>
+          <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>SUPPORT</a>
+        </div>
+
         {/* Bottom nav */}
         <div style={{ display: "flex", borderTop: "1px solid rgba(0,255,159,0.15)", background: "rgba(2,4,8,0.98)", flexShrink: 0, zIndex: 20 }}>
           {BOTTOM_NAV.map((item, i) => (
@@ -918,6 +948,11 @@ export default function App() {
             <a href="https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" target="_blank" rel="noreferrer" style={{ marginTop: "auto", padding: "8px", borderRadius: 3, background: "rgba(0,255,159,0.03)", border: "1px solid rgba(0,255,159,0.18)", color: "#00ff9f", fontSize: 9, textAlign: "center", textDecoration: "none", letterSpacing: "0.08em", display: "block", transition: "all 0.18s" }}>
               ⬡ CELOSCAN ↗
             </a>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, paddingTop: 8 }}>
+              <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>TERMS</a>
+              <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>PRIVACY</a>
+              <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>SUPPORT</a>
+            </div>
           </div>
         </div>
       </div>
@@ -1010,6 +1045,11 @@ export default function App() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(0,255,159,0.03)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(0,255,159,0.18)" }}>
             ⬡ CELOSCAN_EXPLORER ↗
           </a>
+          <div style={{ display: "flex", justifyContent: "center", gap: 10, paddingTop: 8 }}>
+            <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>TERMS</a>
+            <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>PRIVACY</a>
+            <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>SUPPORT</a>
+          </div>
         </div>
       </div>
       {selfRegSession && (

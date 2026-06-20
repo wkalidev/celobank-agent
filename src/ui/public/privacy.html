@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — CeloBank Agent</title>
+  <style>
+    body { background: #020408; color: #b0e0c0; font-family: 'Courier New', monospace; max-width: 680px; margin: 0 auto; padding: 32px 20px 64px; line-height: 1.85; font-size: 14px; }
+    h1 { color: #00ff9f; font-size: 18px; letter-spacing: 0.12em; margin-bottom: 6px; }
+    h2 { color: #00ff9f; font-size: 12px; letter-spacing: 0.1em; margin-top: 28px; margin-bottom: 6px; opacity: 0.8; }
+    p  { opacity: 0.72; margin-bottom: 12px; }
+    ul { opacity: 0.72; margin-bottom: 12px; padding-left: 20px; }
+    a  { color: #00d4ff; }
+    .back { display: inline-block; margin-bottom: 28px; font-size: 11px; color: #00ff9f; opacity: 0.5; text-decoration: none; letter-spacing: 0.1em; }
+    .updated { font-size: 10px; color: #00ff9f; opacity: 0.35; margin-bottom: 28px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">← BACK TO APP</a>
+  <h1>PRIVACY POLICY</h1>
+  <div class="updated">Last updated: 2025-06-20</div>
+
+  <h2>1. OVERVIEW</h2>
+  <p>CeloBank Agent is a non-custodial DeFi interface. We are committed to minimising data collection. We do not sell your data.</p>
+
+  <h2>2. DATA WE COLLECT</h2>
+  <ul>
+    <li><strong>Chat messages</strong> — sent to our AI backend (Claude/Anthropic) to generate responses. Not stored persistently after processing.</li>
+    <li><strong>Wallet address</strong> — read from your connected wallet to query on-chain balances and prepare transactions. Never stored server-side.</li>
+    <li><strong>Usage analytics</strong> — anonymous page-view data via Vercel's default infrastructure analytics.</li>
+  </ul>
+
+  <h2>3. DATA WE DO NOT COLLECT</h2>
+  <ul>
+    <li>Private keys or seed phrases (impossible — App is non-custodial)</li>
+    <li>Phone numbers or personal identity information</li>
+    <li>Payment card or bank details</li>
+  </ul>
+
+  <h2>4. LOCAL STORAGE</h2>
+  <p>The App stores daily-streak data in your browser's localStorage keyed by your wallet address. This data never leaves your device.</p>
+
+  <h2>5. THIRD PARTIES</h2>
+  <ul>
+    <li><strong>Anthropic</strong> — AI inference provider. Subject to <a href="https://www.anthropic.com/privacy" target="_blank" rel="noreferrer">Anthropic's Privacy Policy</a>.</li>
+    <li><strong>CoinGecko</strong> — price data API (no personal data sent).</li>
+    <li><strong>Celo RPC (forno.celo.org)</strong> — public blockchain node (no personal data sent).</li>
+  </ul>
+
+  <h2>6. BLOCKCHAIN DATA</h2>
+  <p>Transactions you sign are broadcast to the public Celo blockchain. All on-chain data is permanently public and irreversible by design.</p>
+
+  <h2>7. CHILDREN</h2>
+  <p>The App is not directed at users under 18. We do not knowingly collect data from minors.</p>
+
+  <h2>8. CHANGES</h2>
+  <p>We may update this Policy at any time. Continued use after changes constitutes acceptance.</p>
+
+  <h2>9. CONTACT</h2>
+  <p>Questions or requests: <a href="https://github.com/wkalidev/celobank-agent/issues">github.com/wkalidev/celobank-agent/issues</a></p>
+</body>
+</html>
