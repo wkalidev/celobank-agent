@@ -67,7 +67,7 @@ G$ is a first-class token in CeloBank — not bolted on. It appears in every por
 |---|---|---|
 | **Tools** | 21 live on-chain tools | `src/server.ts:574` (`tools: 21`) |
 | **Languages supported** | 19 | `src/server.ts:118–138` (19 `langInstructions` entries) |
-| **SDK downloads** | ~1,118 weekly (`@celobank/agent-sdk`) | npm / WHITEPAPER.md |
+| **SDK downloads** | 1,629 in June 2026 (`@celobank/agent-sdk`) | npm / WHITEPAPER.md |
 | **ERC-8004 score** | 100/100 on 8004scan | WHITEPAPER.md §9.1 |
 | **ERC-8004 agent #** | #9225 | [Celoscan NFT](https://celoscan.io/nft/0x8004a169fb4a3325136eb29fa0ceb6d2e539a432/9225) |
 | **Self Protocol status** | SDK integrated (`@selfxyz/agent-sdk` v0.2.1), linked-mode registration endpoint live at `POST /api/self-agent-register` | `src/lib/self-agent-id.ts` |

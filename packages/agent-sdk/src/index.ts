@@ -39,5 +39,14 @@ export {
   type TokenSymbol,
 } from "./constants.js"
 
+// ─── GoodDollar & DailyDrop return types (defined in CeloBankSDK) ────────────
+export type {
+  GoodDollarStatus,
+  EngagementRewardsResult,
+  StreakResult,
+  CheckInResult,
+  ClaimRewardResult,
+} from "./CeloBankSDK.js"
+
 // ─── ABIs (pour les devs qui veulent interagir directement) ──────────────────
 export { ERC20_ABI, BROKER_ABI, AAVE_POOL_ABI } from "./abis.js"

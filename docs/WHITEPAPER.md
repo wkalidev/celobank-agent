@@ -413,7 +413,7 @@ npm install @celobank/agent-sdk
 ```
 
 - **npm**: `@celobank/agent-sdk` v1.0.9
-- **Weekly downloads**: ~1,118 (as of June 2026 — verify current figure at npmjs.com)
+- **Downloads**: 1,629 in June 2026 (415 in the trailing week of June 14–20)
 - **License**: MIT
 - **Runtime**: TypeScript, ESM, Node ≥18
 - **Dependencies**: viem v2, zod
