@@ -315,7 +315,8 @@ function QBtn({ action, onClick, small = false }: { action: typeof QUICK_ACTIONS
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        padding: small ? "6px 10px" : "9px 12px",
+        padding: small ? "14px 10px" : "12px 12px",
+        minHeight: 44,
         borderRadius: 3,
         cursor: "pointer",
         textAlign: "left",
@@ -597,10 +598,14 @@ export default function App() {
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
-    fetch(`${API_URL}/api/self-agent-status`)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 3000)
+    fetch(`${API_URL}/api/self-agent-status`, { signal: controller.signal })
       .then(r => r.json())
       .then(setSelfAgentStatus)
       .catch(() => setSelfAgentStatus({ registered: false }))
+      .finally(() => clearTimeout(timer))
+    return () => { controller.abort(); clearTimeout(timer) }
   }, [])
 
   const handleStartVerification = useCallback(async () => {
@@ -850,10 +855,10 @@ export default function App() {
         </div>
 
         {/* Legal footer */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 20, padding: "5px 12px", background: "rgba(0,0,0,0.5)", borderTop: "1px solid rgba(0,255,159,0.06)", flexShrink: 0 }}>
-          <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>TERMS</a>
-          <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>PRIVACY</a>
-          <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em" }}>SUPPORT</a>
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, background: "rgba(0,0,0,0.5)", borderTop: "1px solid rgba(0,255,159,0.06)", flexShrink: 0 }}>
+          <a href="/terms.html" target="_self" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
+          <a href="/privacy.html" target="_self" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
+          <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
         </div>
 
         {/* Bottom nav */}
@@ -948,10 +953,10 @@ export default function App() {
             <a href="https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" target="_blank" rel="noreferrer" style={{ marginTop: "auto", padding: "8px", borderRadius: 3, background: "rgba(0,255,159,0.03)", border: "1px solid rgba(0,255,159,0.18)", color: "#00ff9f", fontSize: 9, textAlign: "center", textDecoration: "none", letterSpacing: "0.08em", display: "block", transition: "all 0.18s" }}>
               ⬡ CELOSCAN ↗
             </a>
-            <div style={{ display: "flex", justifyContent: "center", gap: 12, paddingTop: 8 }}>
-              <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>TERMS</a>
-              <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>PRIVACY</a>
-              <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>SUPPORT</a>
+            <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+              <a href="/terms.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
+              <a href="/privacy.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
+              <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
             </div>
           </div>
         </div>
@@ -1045,10 +1050,10 @@ export default function App() {
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(0,255,159,0.03)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(0,255,159,0.18)" }}>
             ⬡ CELOSCAN_EXPLORER ↗
           </a>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, paddingTop: 8 }}>
-            <a href="/terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>TERMS</a>
-            <a href="/privacy.html" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>PRIVACY</a>
-            <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em" }}>SUPPORT</a>
+          <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+            <a href="/terms.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
+            <a href="/privacy.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
+            <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
           </div>
         </div>
       </div>

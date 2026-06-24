@@ -337,6 +337,36 @@ User (any language, any device)
 
 ---
 
+## ⚡ Performance & MiniPay Compliance
+
+### PageSpeed / Core Web Vitals
+
+| Optimization | Details |
+|---|---|
+| **Non-blocking fonts** | Google Fonts loaded via `preload` + `onload` swap — no render-blocking request |
+| **LCP preload** | `<link rel="preload" href="/logo.svg" as="image">` ensures LCP image is fetched first |
+| **API timeout** | Self-agent status fetch aborts after 3s — Railway cold starts don't delay render |
+| **Meta description** | Added `<meta name="description">` for search snippet and PageSpeed compliance |
+| **Touch targets** | All interactive elements ≥44×44px (footer links, quick-action buttons) |
+| **Security headers** | `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` served via Vercel |
+
+### MiniPay Compliance Checklist
+
+| Requirement | Status |
+|---|---|
+| Auto-detect `window.ethereum.isMiniPay` | ✅ `detectMiniPay()` runs on mount |
+| Auto-connect wallet (no button required) | ✅ `useEffect` connects `injected` connector immediately |
+| Hide Connect button in MiniPay | ✅ `{!isMiniPay && !isFarcaster && <ConnectButton />}` |
+| Celo Mainnet only (Chain 42220) | ✅ `wallet_switchEthereumChain` enforced on launch |
+| Mobile viewport ≥360px, `minimum-scale=1.0` | ✅ viewport meta includes `minimum-scale=1.0` |
+| Gas in cUSD (`feeCurrency`) | ✅ All MiniPay transactions set `feeCurrency: CUSD_ADDRESS` |
+| Terms & Privacy accessible in-app | ✅ `/terms.html` and `/privacy.html` open within the WebView (`target="_self"`) |
+| Support URL in footer | ✅ `https://github.com/wkalidev/celobank-agent/issues` |
+| Graceful error handling | ✅ All wallet and API errors caught and surfaced as chat messages |
+| Deeplink parsing (`?to=&amount=&token=`) | ✅ URL params pre-fill the input on load |
+
+---
+
 ## 🌱 GoodBuilders Season 4
 
 CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilders.xyz/hackathons/celo-onchain-agents)** — building AI agents on Celo with GoodDollar integration.
