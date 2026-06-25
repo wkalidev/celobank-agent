@@ -182,11 +182,11 @@ function GlitchText({ text, className = "" }: { text: string; className?: string
 }
 
 function ScanLine() {
-  return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 9999, background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,159,0.012) 2px, rgba(0,255,159,0.012) 4px)" }} />
+  return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 9999, background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,159,0.012) 2px, rgba(0,255,159,0.012) 4px)", transform: "translateZ(0)", willChange: "transform" }} />
 }
 
 function CRTNoise() {
-  return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 9998, background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%)" }} />
+  return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 9998, background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%)", transform: "translateZ(0)", willChange: "transform" }} />
 }
 
 function HexGrid() {
@@ -203,6 +203,9 @@ function HexGrid() {
 }
 
 function DataStream() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
   const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノ"
   const cols = 20
   return (
@@ -250,7 +253,7 @@ function FarcasterBanner({ username }: { username?: string }) {
 
 // ─── Shared CSS ───────────────────────────────────────────────────────────────
 const BASE_CSS = `
-  @keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 8px #00ff9f; } 50% { opacity: 0.5; box-shadow: 0 0 3px #00ff9f; } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
   @keyframes datafall { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
   @keyframes slideInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -592,7 +595,9 @@ export default function App() {
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
     } catch (err: unknown) {
-      return `❌ Claim failed: ${err instanceof Error ? err.message : String(err)}`
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Claim cancelled."
+      return `❌ Claim failed: ${msg}`
     } finally { setClaiming(false) }
   }, [address, walletClient, publicClient, streak])
 
@@ -858,7 +863,7 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "center", gap: 8, background: "rgba(0,0,0,0.5)", borderTop: "1px solid rgba(0,255,159,0.06)", flexShrink: 0 }}>
           <a href="/terms.html" target="_self" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
           <a href="/privacy.html" target="_self" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
-          <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
+          <a href="/support.html" target="_self" style={{ fontSize: 8, color: "#00ff9f", opacity: 0.28, textDecoration: "none", letterSpacing: "0.08em", padding: "12px 10px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
         </div>
 
         {/* Bottom nav */}
@@ -956,7 +961,7 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
               <a href="/terms.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
               <a href="/privacy.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
-              <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
+              <a href="/support.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
             </div>
           </div>
         </div>
@@ -1053,7 +1058,7 @@ export default function App() {
           <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
             <a href="/terms.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>TERMS</a>
             <a href="/privacy.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>PRIVACY</a>
-            <a href="https://github.com/wkalidev/celobank-agent/issues" target="_blank" rel="noreferrer" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
+            <a href="/support.html" target="_self" style={{ fontSize: 7, color: "#00ff9f", opacity: 0.25, textDecoration: "none", letterSpacing: "0.07em", padding: "12px 8px", display: "inline-flex", alignItems: "center", minHeight: 44 }}>SUPPORT</a>
           </div>
         </div>
       </div>
