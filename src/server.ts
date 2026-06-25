@@ -5,7 +5,7 @@ import { rateLimit } from "express-rate-limit"
 import { fileURLToPath } from "url"
 import { join, dirname } from "path"
 import { existsSync } from "fs"
-import { runAgent } from "./agent/agent.js"
+import { runAgent, toolRegistry } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { verifyMessage } from "viem"
 import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
@@ -33,7 +33,8 @@ app.use(cors({
     cb(null, true) // keep public for SDK integrations; rate limiting is the real guard
   },
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-PAYMENT", "X-PAYMENT-RECEIPT", "Idempotency-Key"],
+  exposedHeaders: ["X-PAYMENT-RECEIPT"],
   credentials: false,
 }))
 
@@ -86,6 +87,90 @@ function safeError(e: unknown): string {
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
 const AGENT_ADDRESS = account.address
+
+// ─── x402 payment infrastructure ──────────────────────────────────────────────
+const CUSD_ADDRESS     = "0x765DE816845861e75A25fCA122bb6898B8B1282a"
+const PAYMENT_WEI      = "1000000000000000" // 0.001 cUSD at 18 decimals
+const X402_FACILITATOR = "https://x402.org/facilitator"
+const AGENT_BASE_URL   = "https://celobank-agent-production.up.railway.app"
+
+const WRITE_TOOL_NAMES = new Set([
+  "send_celo", "swap_celo", "swap_tokens", "save_cusd",
+  "stake_celo", "unstake_celo", "launch_token",
+])
+
+function paymentRequired402(toolName: string) {
+  return {
+    x402Version: 1,
+    error:       "Payment Required",
+    accepts: [{
+      scheme:            "exact",
+      chainId:           42220,
+      asset:             CUSD_ADDRESS,
+      maxAmountRequired: PAYMENT_WEI,
+      payTo:             AGENT_ADDRESS,
+      description:       `CeloBank Agent write tool: ${toolName} (0.001 cUSD)`,
+      resource:          `${AGENT_BASE_URL}/mcp`,
+      maxTimeoutSeconds: 300,
+    }],
+    catalog: `${AGENT_BASE_URL}/catalog`,
+  }
+}
+
+async function verifyX402Payment(
+  paymentHeader: string
+): Promise<{ valid: boolean; receipt?: unknown; reason?: string }> {
+  try {
+    const res = await fetch(`${X402_FACILITATOR}/verify`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payment:  paymentHeader,
+        resource: `${AGENT_BASE_URL}/mcp`,
+        amount:   PAYMENT_WEI,
+        asset:    CUSD_ADDRESS,
+        chainId:  42220,
+        payTo:    AGENT_ADDRESS,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) {
+      console.error("[x402] Facilitator HTTP error:", res.status)
+      return { valid: false, reason: "Payment facilitator unreachable" }
+    }
+    const data = await res.json() as { isValid?: boolean; invalidReason?: string; receipt?: unknown }
+    if (!data.isValid) return { valid: false, reason: data.invalidReason ?? "Invalid payment" }
+    return { valid: true, receipt: data.receipt }
+  } catch (e) {
+    console.error("[x402] Verify failed:", e instanceof Error ? e.message : e)
+    return { valid: false, reason: "Payment verification unavailable" }
+  }
+}
+
+async function settleX402Payment(paymentHeader: string): Promise<{ txHash?: string }> {
+  try {
+    const res = await fetch(`${X402_FACILITATOR}/settle`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payment:  paymentHeader,
+        resource: `${AGENT_BASE_URL}/mcp`,
+        amount:   PAYMENT_WEI,
+        asset:    CUSD_ADDRESS,
+        chainId:  42220,
+        payTo:    AGENT_ADDRESS,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!res.ok) { console.error("[x402] Settle HTTP error:", res.status); return {} }
+    const data = await res.json() as { txHash?: string }
+    if (data.txHash) console.log("[x402] Settled:", data.txHash)
+    return data
+  } catch (e) {
+    console.error("[x402] Settle failed:", e instanceof Error ? e.message : e)
+    return {}
+  }
+}
 
 // ─── Language Detection ───────────────────────────────────────────────────────
 function detectLanguage(text: string): string {
@@ -189,7 +274,7 @@ This is the recommended approach — the agent never holds user funds.
     { url: "http://localhost:3000", description: "Local development" },
   ],
   tags: [
-    { name: "Agent",     description: "Natural language AI agent" },
+    { name: "Agent",     description: "Natural language agent" },
     { name: "Prepare",   description: "Non-custodial transaction preparation" },
     { name: "Wallet",    description: "Portfolio & balance reads" },
     { name: "Prices",    description: "Real-time token prices" },
@@ -201,7 +286,7 @@ This is the recommended approach — the agent never holds user funds.
     "/api/v1/chat": {
       post: {
         tags: ["Agent"],
-        summary: "Send a message to the AI agent",
+        summary: "Send a message to the agent",
         description: "The agent understands natural language in 19 languages and executes DeFi actions on Celo Mainnet. Rate limited to 20 req/min.",
         requestBody: {
           required: true,
@@ -292,14 +377,46 @@ This is the recommended approach — the agent never holds user funds.
         responses: { 200: { description: "API is healthy" } },
       },
     },
+    "/mcp": {
+      post: {
+        tags: ["System"],
+        summary: "MCP JSON-RPC endpoint",
+        description: "Model Context Protocol endpoint (protocol 2024-11-05). Read tools are free. Write tools require `X-PAYMENT` header (0.001 cUSD each). See GET /catalog for full x402 payment schema.",
+        security: [{ x402Payment: [] }],
+        responses: {
+          200: { description: "JSON-RPC response" },
+          402: { description: "Payment Required — send X-PAYMENT header with 0.001 cUSD in cUSD on Celo" },
+        },
+      },
+    },
+    "/catalog": {
+      get: {
+        tags: ["System"],
+        summary: "x402 machine-readable service catalog",
+        description: "Lists all 21 tools with pricing, payment schema, and x402 facilitator details.",
+        responses: { 200: { description: "x402 catalog" } },
+      },
+    },
   },
+  components: {
+    securitySchemes: {
+      x402Payment: {
+        type:        "apiKey",
+        in:          "header",
+        name:        "X-PAYMENT",
+        description: "x402 micropayment header — required for write tools via POST /mcp. 0.001 cUSD per write tool call on Celo Mainnet (chain 42220). See GET /catalog for full payment schema and facilitator details.",
+      },
+    },
+  },
+  security: [],
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.get("/",              (_, res) => res.send(swaggerHTML))
 app.get("/docs",          (_, res) => res.send(swaggerHTML))
-app.get("/api/v1/openapi.json", (_, res) => res.json(openApiSpec))
+app.get("/api/v1/openapi.json",      (_, res) => res.json(openApiSpec))
+app.get("/.well-known/openapi.json", (_, res) => res.json(openApiSpec))
 
 // ─── POST /api/v1/chat ────────────────────────────────────────────────────────
 app.post("/api/v1/chat", chatLimit, async (req, res) => {
@@ -593,7 +710,7 @@ const MCP_TOOLS = [
   { name: "unstake_celo",         description: "Unstake stCELO back to CELO" },
   { name: "get_staking_position", description: "Get CELO/stCELO staking position" },
   { name: "get_yield_options",    description: "Get all yield options on Celo with APY and risk" },
-  { name: "trade_ideas",          description: "AI portfolio analysis and DeFi recommendations" },
+  { name: "trade_ideas",          description: "Portfolio analysis and personalized DeFi recommendations" },
   { name: "get_market_overview",  description: "Real-time market overview for all Celo tokens" },
   { name: "get_bridge_info",      description: "Bridge options to move tokens to/from Celo" },
   { name: "get_dailydrop_status", description: "Check DailyDrop streak and Proof of Presence badge" },
@@ -607,19 +724,106 @@ const MCP_TOOLS = [
 const MCP_INFO = {
   name:        "CeloBank Agent",
   version:     "2.0.0",
-  description: "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. Powered by Anthropic Claude Sonnet 4.6. ERC-8004 compliant.",
+  description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. x402 micropayments (0.001 cUSD/write). ERC-8004 compliant.",
   tools:       MCP_TOOLS.map(t => t.name),
   status:      "healthy",
   endpoint:    "https://celobank-agent-production.up.railway.app/mcp",
   x402support: true,
 }
 
-// Shared JSON-RPC dispatcher — used by POST /mcp and POST /
-function handleMcpRpc(req: any, res: any) {
-  const { method, id } = req.body || {}
+// Per-tool input schemas for MCP tools/list discovery
+const TOOL_SCHEMAS: Record<string, object> = {
+  get_balance:          { type: "object", properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_portfolio:        { type: "object", properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_celo_price:       { type: "object", properties: {} },
+  get_multi_price:      { type: "object", properties: {} },
+  get_aave_position:    { type: "object", properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_staking_position: { type: "object", properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_yield_options:    { type: "object", properties: { riskLevel: { type: "string", description: "Filter: low, medium, very low" } } },
+  trade_ideas:          { type: "object", properties: { address: { type: "string", description: "Wallet address to analyze" } } },
+  get_market_overview:  { type: "object", properties: {} },
+  get_bridge_info:      { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, token: { type: "string" } } },
+  get_dailydrop_status: { type: "object", properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_tokens:           { type: "object", properties: {} },
+  get_trending_tokens:  { type: "object", properties: {} },
+  check_gooddollar:     { type: "object", required: ["address"], properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
+  get_engagement_rewards: { type: "object", properties: { address: { type: "string", description: "App address (optional, defaults to CeloBank)" } } },
+  // Write tools — require X-PAYMENT: 0.001 cUSD via x402
+  send_celo: {
+    type: "object",
+    required: ["userAddress", "to", "amount"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      to:          { type: "string", description: "Recipient address (0x...)" },
+      amount:      { type: "string", description: "Amount of CELO to send" },
+    },
+  },
+  swap_celo: {
+    type: "object",
+    required: ["userAddress", "amount", "tokenOut"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      amount:      { type: "string", description: "Amount of CELO to swap" },
+      tokenOut:    { type: "string", description: "Target token: cUSD, cEUR, cREAL, USDC, USDT" },
+    },
+  },
+  swap_tokens: {
+    type: "object",
+    required: ["userAddress", "amount", "tokenOut"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      amount:      { type: "string", description: "Amount to swap" },
+      tokenIn:     { type: "string", description: "Source token symbol (default: CELO)" },
+      tokenOut:    { type: "string", description: "Destination token symbol" },
+    },
+  },
+  save_cusd: {
+    type: "object",
+    required: ["userAddress", "amount"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      amount:      { type: "string", description: "Amount to supply" },
+      asset:       { type: "string", description: "Asset: cUSD (default) or USDC" },
+    },
+  },
+  stake_celo: {
+    type: "object",
+    required: ["userAddress", "amount"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      amount:      { type: "string", description: "Amount of CELO to stake" },
+    },
+  },
+  unstake_celo: {
+    type: "object",
+    required: ["userAddress", "amount"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+      amount:      { type: "string", description: "Amount of stCELO to unstake" },
+    },
+  },
+  launch_token: {
+    type: "object",
+    required: ["userAddress", "name", "symbol", "totalSupply"],
+    properties: {
+      userAddress:  { type: "string", description: "Signer wallet address (0x...)" },
+      name:         { type: "string", description: "Full token name" },
+      symbol:       { type: "string", description: "Token symbol (max 11 chars)" },
+      totalSupply:  { type: "string", description: "Total supply as a number string" },
+    },
+  },
+}
+
+const mcpLimit = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many requests." } })
+
+// JSON-RPC dispatcher — POST /mcp and POST /
+// Read tools execute free. Write tools enforce x402: verify → execute → settle.
+async function handleMcpRpc(req: any, res: any): Promise<void> {
+  const { method, id, params } = req.body || {}
 
   if (method === "initialize") {
-    return res.json({
+    res.json({
       jsonrpc: "2.0", id,
       result: {
         protocolVersion: "2024-11-05",
@@ -627,33 +831,151 @@ function handleMcpRpc(req: any, res: any) {
         capabilities: { tools: {} },
       },
     })
+    return
   }
 
   if (method === "tools/list") {
-    return res.json({
+    res.json({
       jsonrpc: "2.0", id,
       result: {
         tools: MCP_TOOLS.map(t => ({
           name:        t.name,
           description: t.description,
-          inputSchema: { type: "object", properties: {} },
+          inputSchema: TOOL_SCHEMAS[t.name] ?? { type: "object", properties: {} },
+          ...(WRITE_TOOL_NAMES.has(t.name) ? { x402: { required: true, amount: "0.001 cUSD", chainId: 42220 } } : {}),
         })),
       },
     })
+    return
   }
 
   if (method === "tools/call") {
-    return res.json({
-      jsonrpc: "2.0", id,
-      result: { content: [{ type: "text", text: "Use POST /api/v1/chat or POST /api/v1/prepare to invoke tools." }] },
-    })
+    const toolName = params?.name
+    const toolArgs = (params?.arguments ?? {}) as Record<string, string>
+
+    if (!toolName || typeof toolName !== "string") {
+      res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "params.name is required" } })
+      return
+    }
+
+    const knownTool = MCP_TOOLS.find(t => t.name === toolName)
+    if (!knownTool) {
+      res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: `Unknown tool: ${toolName}` } })
+      return
+    }
+
+    // ── Write tools: enforce x402 ──────────────────────────────────────────────
+    if (WRITE_TOOL_NAMES.has(toolName)) {
+      const paymentHeader = req.headers["x-payment"] as string | undefined
+      if (!paymentHeader) {
+        res.status(402).json(paymentRequired402(toolName))
+        return
+      }
+
+      const verification = await verifyX402Payment(paymentHeader)
+      if (!verification.valid) {
+        res.status(402).json({ ...paymentRequired402(toolName), reason: verification.reason })
+        return
+      }
+
+      // Validate write-tool args before calling any prepare function
+      const userAddress = toolArgs.userAddress
+      if (!isValidAddress(userAddress)) {
+        res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.userAddress must be a valid Ethereum address" } })
+        return
+      }
+
+      try {
+        let result: unknown
+
+        switch (toolName) {
+          case "send_celo":
+            if (!isValidAddress(toolArgs.to))         { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.to must be a valid address" } }); return }
+            if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
+            result = await prepareSend(userAddress, toolArgs.to, toolArgs.amount)
+            break
+
+          case "swap_celo":
+          case "swap_tokens":
+            if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
+            if (!toolArgs.tokenOut)                    { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.tokenOut is required" } }); return }
+            result = await prepareSwap(userAddress, toolArgs.amount, toolArgs.tokenOut, toolArgs.tokenIn ?? "CELO")
+            break
+
+          case "save_cusd":
+            if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
+            result = await prepareSupplyAave(userAddress, toolArgs.amount, toolArgs.asset ?? "cUSD")
+            break
+
+          case "stake_celo":
+            if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
+            result = await prepareStake(userAddress, toolArgs.amount)
+            break
+
+          case "unstake_celo":
+            res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "unstake_celo via MCP returns unsigned calldata — sign the returned tx with your wallet to complete the 3-day unbonding" } })
+            return
+
+          case "launch_token":
+            if (!toolArgs.name)                        { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.name is required" } }); return }
+            if (!toolArgs.symbol)                      { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.symbol is required" } }); return }
+            if (!isValidAmount(toolArgs.totalSupply))  { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.totalSupply must be a positive number" } }); return }
+            result = await prepareLaunchToken(userAddress, toolArgs.name, toolArgs.symbol, toolArgs.totalSupply)
+            break
+
+          default:
+            res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: `Unhandled write tool: ${toolName}` } })
+            return
+        }
+
+        // Payment verified + tool succeeded: settle now
+        const settlement = await settleX402Payment(paymentHeader)
+        if (settlement.txHash) {
+          res.setHeader("X-PAYMENT-RECEIPT", JSON.stringify({
+            txHash:    settlement.txHash,
+            chainId:   42220,
+            network:   "celo",
+            paidTo:    AGENT_ADDRESS,
+            amount:    "0.001",
+            currency:  "cUSD",
+            tool:      toolName,
+            settledAt: new Date().toISOString(),
+          }))
+        }
+
+        res.json({
+          jsonrpc: "2.0", id,
+          result: { content: [{ type: "text", text: JSON.stringify(result) }], paymentStatus: "settled" },
+        })
+      } catch (e) {
+        console.error(`[mcp] Write tool ${toolName} error:`, e)
+        res.json({ jsonrpc: "2.0", id, error: { code: -32603, message: safeError(e) } })
+      }
+      return
+    }
+
+    // ── Read tools: execute directly, no payment ───────────────────────────────
+    const toolFn = toolRegistry[toolName]
+    if (!toolFn) {
+      res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: `Tool not implemented: ${toolName}` } })
+      return
+    }
+
+    try {
+      const result = await toolFn.invoke(toolArgs)
+      res.json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: result }] } })
+    } catch (e) {
+      console.error(`[mcp] Read tool ${toolName} error:`, e)
+      res.json({ jsonrpc: "2.0", id, error: { code: -32603, message: safeError(e) } })
+    }
+    return
   }
 
-  return res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
+  res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } })
 }
 
 app.get("/mcp",  (_, res) => res.json(MCP_INFO))
-app.post("/mcp", handleMcpRpc)
+app.post("/mcp", mcpLimit, (req, res, next) => { handleMcpRpc(req, res).catch(next) })
 
 // ─── GET /catalog — x402 machine-readable service catalog ─────────────────────
 app.get("/catalog", (_, res) => {
@@ -679,7 +1001,7 @@ app.get("/catalog", (_, res) => {
     service: {
       id:          "celobank-agent",
       name:        "CeloBank Agent",
-      description: "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ integration, DailyDrop streaks.",
+      description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ integration, DailyDrop streaks.",
       version:     "2.0.0",
       baseUrl:     "https://celobank-agent-production.up.railway.app",
       entrypoint:  "POST /api/v1/chat",
@@ -790,7 +1112,7 @@ app.get("/.well-known/agent-card.json", (_, res) => {
   res.json({
     protocolVersion:    "0.3.0",
     name:               "CeloBank Agent",
-    description:        "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 21 callable tools. x402 payment supported.",
+    description:        "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 21 callable tools. x402 payment enforced on write tools (0.001 cUSD each).",
     version:            "2.0.0",
     url:                "https://celobank-agent-production.up.railway.app",
     provider: {
@@ -802,10 +1124,25 @@ app.get("/.well-known/agent-card.json", (_, res) => {
     preferredTransport: "HTTP+JSON",
     defaultInputModes:  ["text/plain"],
     defaultOutputModes: ["text/plain"],
+    termsOfService:     "https://github.com/wkalidev/celobank-agent/blob/main/LICENSE",
+    license:            { name: "MIT", url: "https://github.com/wkalidev/celobank-agent/blob/main/LICENSE" },
     capabilities: {
       streaming:              false,
       pushNotifications:      false,
       stateTransitionHistory: false,
+    },
+    extensions: {
+      x402: {
+        supported:        true,
+        catalog:          `${AGENT_BASE_URL}/catalog`,
+        paymentToken:     "cUSD",
+        paymentTokenAddr: CUSD_ADDRESS,
+        chainId:          42220,
+        writeToolFee:     "0.001 cUSD",
+        freeTools:        14,
+        paidTools:        7,
+        facilitator:      X402_FACILITATOR,
+      },
     },
     skills: [
       {
@@ -875,10 +1212,11 @@ if (existsSync(uiDist)) {
   })
 
   // POST / — JSON-RPC clients that hit the root instead of /mcp
-  app.post("/", (req, res) => {
+  app.post("/", mcpLimit, (req, res, next) => {
     const body = req.body || {}
     if (body.jsonrpc !== undefined || body.method !== undefined) {
-      return handleMcpRpc(req, res)
+      handleMcpRpc(req, res).catch(next)
+      return
     }
     res.status(404).json({ error: "Not found" })
   })

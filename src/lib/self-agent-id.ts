@@ -76,6 +76,6 @@ export async function initiateRegistration(humanAddress: string) {
     humanAddress,
     agentName: "CeloBank Agent",
     agentDescription:
-      "Non-custodial AI DeFi agent on Celo Mainnet — ERC-8004 registered, 21 tools, 19 languages",
+      "Non-custodial DeFi agent on Celo Mainnet — ERC-8004 registered, 21 tools, 19 languages",
   })
 }

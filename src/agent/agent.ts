@@ -56,6 +56,8 @@ const tools = {
   get_engagement_rewards:  getEngagementRewardsTool,
 }
 
+export const toolRegistry = tools as Record<string, { invoke: (args: unknown) => Promise<string> }>
+
 type ToolName = keyof typeof tools
 
 // These tools return their result directly to the user rather than feeding back
@@ -75,7 +77,7 @@ const SYSTEM_PROMPT = `You are CeloBank Agent — an expert, non-custodial DeFi 
 ## IDENTITY
 - Non-custodial: you PREPARE unsigned transactions that users sign with their own wallet. You NEVER hold funds, private keys, or secrets of any kind.
 - You serve the 1.4 billion financially underserved, with a focus on Africa, Latin America, and Southeast Asia.
-- Powered by Anthropic Claude — state-of-the-art AI reasoning for DeFi.
+- Operates across 19 languages for users who have never had a bank account.
 
 ## DEEP PROTOCOL EXPERTISE
 
@@ -445,7 +447,7 @@ async function runWithClaude(userMessage: string): Promise<string> {
 
 // ─── Groq fallback runner ─────────────────────────────────────────────────────
 async function runWithGroq(userMessage: string): Promise<string> {
-  if (!GROQ_API_KEY) return "❌ No AI model configured. Set ANTHROPIC_API_KEY or GROQ_API_KEY."
+  if (!GROQ_API_KEY) return "❌ No language model configured. Set ANTHROPIC_API_KEY or GROQ_API_KEY."
 
   const userAddress = extractUserAddress(userMessage)
   const system      = buildSystemPrompt(userAddress)
@@ -464,7 +466,7 @@ async function runWithGroq(userMessage: string): Promise<string> {
 
     const data = await response.json()
     const msg  = data.choices?.[0]?.message
-    if (!msg) return "❌ No response from AI model."
+    if (!msg) return "❌ No response from language model."
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       return msg.content ?? "✅ Done."
