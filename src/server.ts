@@ -39,6 +39,14 @@ app.use(cors({
 }))
 
 app.set("trust proxy", 1)
+app.disable("x-powered-by")
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  res.setHeader("X-Frame-Options", "DENY")
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin")
+  next()
+})
 
 app.use(express.json({ limit: "64kb" }))
 
@@ -66,6 +74,7 @@ function isValidAddress(addr: unknown): addr is string {
 
 function isValidAmount(amount: unknown): boolean {
   if (typeof amount !== "string") return false
+  if (!/^\d+(\.\d+)?$/.test(amount)) return false   // strict: digits and optional decimal only
   const n = parseFloat(amount)
   return !isNaN(n) && n > 0 && isFinite(n)
 }
