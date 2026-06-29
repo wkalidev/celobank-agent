@@ -107,8 +107,9 @@ export async function getTokens(): Promise<string> {
     )
 
     return `🏭 **CeloBank Token Factory** — ${tokens.length} token(s) launched:\n\n${lines.join("\n\n")}`
-  } catch (e: any) {
-    return `❌ Failed to fetch tokens: ${e.message}`
+  } catch (e: unknown) {
+    console.error("[getTokens] Error:", e instanceof Error ? e.message : e)
+    return "❌ Failed to fetch tokens. Please try again."
   }
 }
 
@@ -132,8 +133,9 @@ export async function getTrendingTokens(): Promise<string> {
     )
 
     return `🔥 **Trending on CeloBank** — 5 most recent launches:\n\n${lines.join("\n\n")}`
-  } catch (e: any) {
-    return `❌ Failed to fetch trending tokens: ${e.message}`
+  } catch (e: unknown) {
+    console.error("[getTrendingTokens] Error:", e instanceof Error ? e.message : e)
+    return "❌ Failed to fetch trending tokens. Please try again."
   }
 }
 

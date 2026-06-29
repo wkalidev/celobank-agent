@@ -28,9 +28,11 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (curl, Swagger, mobile apps)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
-    cb(null, true) // keep public for SDK integrations; rate limiting is the real guard
+    // Non-browser clients (curl, Node SDKs, mobile) don't send Origin — allow them
+    if (!origin) return cb(null, true)
+    // Browser requests must come from a known origin
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
+    cb(new Error("Not allowed by CORS"))
   },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-PAYMENT", "X-PAYMENT-RECEIPT", "Idempotency-Key"],
@@ -62,6 +64,24 @@ const chatLimit = rateLimit({
 const prepareLimit = rateLimit({
   windowMs: 60_000,
   max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+})
+
+// Endpoints that call runAgent (LLM) — same budget as chat
+const agentReadLimit = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+})
+
+// Endpoints that proxy external APIs (CoinGecko, token list)
+const externalReadLimit = rateLimit({
+  windowMs: 60_000,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please wait a moment and try again." },
@@ -460,7 +480,8 @@ app.post("/api/v1/chat", chatLimit, async (req, res) => {
 // Backward-compat alias
 app.post("/chat", chatLimit, async (req, res) => {
   const { message, userAddress } = req.body
-  if (!message || typeof message !== "string") return res.status(400).json({ error: "Message requis" })
+  if (!message || typeof message !== "string" || message.trim().length === 0) return res.status(400).json({ error: "Message requis" })
+  if (message.length > 2000) return res.status(400).json({ error: "message must be 2000 characters or fewer" })
   if (userAddress && !isValidAddress(userAddress)) return res.status(400).json({ error: "Invalid address" })
 
   try {
@@ -555,7 +576,7 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
 })
 
 // ─── GET /api/v1/portfolio/:address ──────────────────────────────────────────
-app.get("/api/v1/portfolio/:address", async (req, res) => {
+app.get("/api/v1/portfolio/:address", agentReadLimit, async (req, res) => {
   const { address } = req.params
   if (!isValidAddress(address)) {
     return res.status(400).json({ error: "Invalid Celo address" })
@@ -574,7 +595,7 @@ app.get("/api/v1/portfolio/:address", async (req, res) => {
 })
 
 // ─── GET /api/v1/prices ───────────────────────────────────────────────────────
-app.get("/api/v1/prices", async (req, res) => {
+app.get("/api/v1/prices", externalReadLimit, async (req, res) => {
   const tokens = req.query.tokens as string | undefined
 
   try {
@@ -603,7 +624,7 @@ app.get("/api/v1/prices", async (req, res) => {
 })
 
 // ─── GET /api/v1/tokens ───────────────────────────────────────────────────────
-app.get("/api/v1/tokens", async (_req, res) => {
+app.get("/api/v1/tokens", externalReadLimit, async (_req, res) => {
   try {
     const upstream = await fetch("https://celo-org.github.io/celo-token-list/celo.tokenlist.json")
     const data = await upstream.json() as { tokens: Array<{ chainId: number; address: string; symbol: string; name: string; decimals: number; logoURI?: string }> }
@@ -621,7 +642,7 @@ app.get("/api/v1/tokens", async (_req, res) => {
 })
 
 // ─── GET /api/v1/aave/:address ────────────────────────────────────────────────
-app.get("/api/v1/aave/:address", async (req, res) => {
+app.get("/api/v1/aave/:address", agentReadLimit, async (req, res) => {
   const { address } = req.params
   if (!isValidAddress(address)) {
     return res.status(400).json({ error: "Invalid Celo address" })

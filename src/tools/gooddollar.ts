@@ -128,7 +128,8 @@ async function getEngagementRewards(appAddress?: string): Promise<string> {
 
 💡 Share CeloBank with friends. Every new verified user you bring earns you G$ rewards.`
   } catch (e: unknown) {
-    return `❌ Failed to fetch engagement rewards: ${e instanceof Error ? e.message : String(e)}`
+    console.error("[getEngagementRewards] Error:", e instanceof Error ? e.message : e)
+    return "❌ Failed to fetch engagement rewards. Please try again."
   }
 }
 
