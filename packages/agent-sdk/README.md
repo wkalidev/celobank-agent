@@ -505,7 +505,37 @@ console.log(TOKENS.USDC.decimals)  // 6
 
 ---
 
+## Security & Rate Limits
+
+The CeloBank Agent server enforces the following on all API endpoints:
+
+| Endpoint type | Rate limit | Auth required |
+|---------------|-----------|---------------|
+| `POST /api/v1/chat`, `POST /chat` | 20 req/min | None (public) |
+| `POST /api/v1/prepare` | 30 req/min | None (public) |
+| `GET /api/v1/portfolio/:address`, `GET /api/v1/aave/:address` | 20 req/min | None (public) |
+| `GET /api/v1/prices`, `GET /api/v1/tokens` | 60 req/min | None (public) |
+| `POST /mcp` (read tools) | 60 req/min | None (free) |
+| `POST /mcp` (write tools) | 60 req/min | `X-PAYMENT` header (x402, 0.001 cUSD) |
+
+**CORS**: Browser requests must originate from a known origin. Non-browser clients (curl, Node.js SDK, mobile) without an `Origin` header pass through unrestricted.
+
+**x402 payment enforcement**: The 7 write MCP tools (`send_celo`, `swap_tokens`, `supply_aave`, `borrow_aave`, `repay_aave`, `launch_token`, `check_in`) require a valid `X-PAYMENT` header. The server verifies the payment on Celo Mainnet before executing and settles after. Insufficient or missing payment returns HTTP 402.
+
+**Supabase RLS**: `agent_actions` is locked to service-role only. `agent_stats` allows public SELECT; all writes are service-role only.
+
+---
+
 ## Changelog
+
+### v1.1.0
+- x402 payment enforcement on all 7 MCP write tools (verify → execute → settle, 0.001 cUSD per call)
+- OASF-compliant agent card at `/.well-known/agent-card.json`
+- Security: CORS origin enforcement — browser requests restricted to known origins
+- Security: rate limiting on all public GET endpoints (portfolio/aave 20 req/min, prices/tokens 60 req/min)
+- Security: input validation hardened on `/chat` alias (empty messages + >2000 chars rejected)
+- Security: internal error details sanitized in tool error responses
+- Supabase RLS: deny-all policies on `agent_actions`; public SELECT + deny-write on `agent_stats`
 
 ### v1.0.9
 - 📖 Updated README: getCatalog() in methods table, v1.0.7/v1.0.8 changelog entries

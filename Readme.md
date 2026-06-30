@@ -160,17 +160,44 @@ GROQ_API_KEY=gsk_...              # Optional fallback if ANTHROPIC_API_KEY not s
 
 ## 🌐 REST API
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/chat` | POST | Natural language AI agent |
-| `/api/v1/prepare` | POST | Prepare unsigned TX (non-custodial) |
-| `/api/v1/portfolio/:address` | GET | Full wallet portfolio |
-| `/api/v1/prices` | GET | Real-time token prices |
-| `/api/v1/aave/:address` | GET | Aave V3 position |
-| `/api/v1/tokens` | GET | List all verified Celo tokens (88 from official token list) |
-| `/catalog` | GET | x402 machine-readable service catalog (tool list, pricing, payment schema, idempotency, spend limits, failure/refund states) |
-| `/health` | GET | API status |
-| `/docs` | GET | Swagger UI |
+| Endpoint | Method | Rate limit | Description |
+|----------|--------|-----------|-------------|
+| `/api/v1/chat` | POST | 20/min | Natural language AI agent |
+| `/chat` | POST | 20/min | Alias (same behavior) |
+| `/api/v1/prepare` | POST | 30/min | Prepare unsigned TX (non-custodial) |
+| `/api/v1/portfolio/:address` | GET | 20/min | Full wallet portfolio (runs LLM) |
+| `/api/v1/aave/:address` | GET | 20/min | Aave V3 position (runs LLM) |
+| `/api/v1/prices` | GET | 60/min | Real-time token prices (proxied) |
+| `/api/v1/tokens` | GET | 60/min | All verified Celo tokens (proxied) |
+| `/mcp` | POST | 60/min | MCP JSON-RPC — 14 free read tools + 7 paid write tools (x402) |
+| `/catalog` | GET | — | x402 machine-readable service catalog |
+| `/.well-known/agent-card.json` | GET | — | OASF-compliant agent card |
+| `/health` | GET | — | API status |
+| `/docs` | GET | — | Swagger UI |
+
+### POST /mcp — Model Context Protocol
+
+CeloBank Agent exposes a full MCP server at `POST /mcp`. Agents and AI clients can call all 21 tools directly over JSON-RPC.
+
+**Free read tools (14)**: `get_portfolio`, `get_prices`, `get_aave_position`, `get_tokens`, `get_trending_tokens`, `get_market_overview`, `get_trade_ideas`, `get_bridge_info`, `get_streak`, `check_gooddollar`, `get_engagement_rewards`, `get_catalog`, `get_yield_options`, `get_token_info`
+
+**Paid write tools (7)** — require `X-PAYMENT` header (0.001 cUSD on Celo Mainnet via x402):
+`send_celo`, `swap_tokens`, `supply_aave`, `borrow_aave`, `repay_aave`, `launch_token`, `check_in`
+
+```bash
+# Free read tool — no payment needed
+curl -X POST https://celobank-agent-production.up.railway.app/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_portfolio","arguments":{"address":"0xYOUR..."}},"id":1}'
+
+# Write tool — requires X-PAYMENT header
+curl -X POST https://celobank-agent-production.up.railway.app/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-PAYMENT: <x402-payment-payload>" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"swap_tokens","arguments":{"userAddress":"0x...","tokenIn":"CELO","tokenOut":"cUSD","amount":"5"}},"id":2}'
+```
+
+The x402 payment flow: agent pays 0.001 cUSD → server verifies on-chain → executes action → settles. Insufficient payment returns HTTP 402. Use `GET /catalog` to discover pricing and schema.
 
 ### GET /catalog — Agent-to-Agent Commerce
 
@@ -385,7 +412,7 @@ CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilder
 - **`check_gooddollar` agent tool** — reads G$ balance + `isVerified` / `getIdentityExpiry` from IdentityV4 for any wallet
 - **`get_engagement_rewards` agent tool** — reads `appsStats()` from EngagementRewards: users onboarded, total G$ distributed
 - **🌱 G$ button in the UI** — one-tap G$ status check in both desktop sidebar and mobile quick-action strip
-- **SDK methods** — `checkGoodDollar()` and `getEngagementRewards()` available in `@celobank/agent-sdk@1.0.6`
+- **SDK methods** — `checkGoodDollar()` and `getEngagementRewards()` available in `@celobank/agent-sdk`
 - **CeloBank registered** with EngagementRewards contract (pending GoodDollar approval) — earns $0.50 G$ per new verified user onboarded
 
 ### Try it
@@ -406,6 +433,22 @@ CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilder
    >   └ To Inviters: 4.70 G$
    > Reward per New User: 0.5000 G$
 ```
+
+---
+
+## 🔒 Security
+
+| Layer | Detail |
+|-------|--------|
+| **CORS** | Browser requests restricted to known origins; non-browser clients (curl, Node.js, mobile) pass through |
+| **Rate limiting** | Per-endpoint limits: chat 20/min, prepare 30/min, LLM-backed GETs 20/min, proxied GETs 60/min, MCP 60/min |
+| **Input validation** | All POST bodies validated (type, length, format); addresses and amounts checked before any blockchain call |
+| **x402 enforcement** | Write tools on `/mcp` require a verified on-chain payment before execution |
+| **Error sanitization** | Tool errors logged server-side; clients receive generic messages — no internal stack traces or API keys leaked |
+| **Supabase RLS** | `agent_actions` — service-role only (deny all for anon/authenticated). `agent_stats` — public SELECT, writes service-role only |
+| **No SQL** | All blockchain interaction via viem — no SQL queries, no SQL injection surface |
+| **Secrets** | All credentials in `.env` (gitignored); no hardcoded keys in source |
+| **Headers** | `X-Powered-By` removed; `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` set |
 
 ---
 
