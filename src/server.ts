@@ -847,6 +847,17 @@ const TOOL_SCHEMAS: Record<string, object> = {
 const mcpLimit = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
   message: { error: "Too many requests." } })
 
+// ─── Idempotency store ────────────────────────────────────────────────────────
+// Only successful write-tool settlements are cached. Error responses are not
+// cached so callers can retry after fixing bad args without being stuck.
+const IDEMPOTENCY_TTL = 24 * 60 * 60 * 1000
+interface IdempotencyEntry { response: object; receipt: string | null; expiry: number }
+const idempotencyStore = new Map<string, IdempotencyEntry>()
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of idempotencyStore) if (v.expiry <= now) idempotencyStore.delete(k)
+}, 30 * 60 * 1000).unref()
+
 // JSON-RPC dispatcher — POST /mcp and POST /
 // Read tools execute free. Write tools enforce x402: verify → execute → settle.
 async function handleMcpRpc(req: any, res: any): Promise<void> {
@@ -896,6 +907,17 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
 
     // ── Write tools: enforce x402 ──────────────────────────────────────────────
     if (WRITE_TOOL_NAMES.has(toolName)) {
+      const idempKey = (req.headers["idempotency-key"] as string | undefined)?.trim() || null
+      if (idempKey) {
+        const cached = idempotencyStore.get(idempKey)
+        if (cached && cached.expiry > Date.now()) {
+          if (cached.receipt) res.setHeader("X-PAYMENT-RECEIPT", cached.receipt)
+          res.setHeader("Idempotency-Replayed", "true")
+          res.json(cached.response)
+          return
+        }
+      }
+
       const paymentHeader = req.headers["x-payment"] as string | undefined
       if (!paymentHeader) {
         res.status(402).json(paymentRequired402(toolName))
@@ -960,23 +982,26 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
 
         // Payment verified + tool succeeded: settle now
         const settlement = await settleX402Payment(paymentHeader)
-        if (settlement.txHash) {
-          res.setHeader("X-PAYMENT-RECEIPT", JSON.stringify({
-            txHash:    settlement.txHash,
-            chainId:   42220,
-            network:   "celo",
-            paidTo:    AGENT_ADDRESS,
-            amount:    "0.001",
-            currency:  "cUSD",
-            tool:      toolName,
-            settledAt: new Date().toISOString(),
-          }))
-        }
-
-        res.json({
+        const receipt = settlement.txHash ? JSON.stringify({
+          txHash:    settlement.txHash,
+          chainId:   42220,
+          network:   "celo",
+          paidTo:    AGENT_ADDRESS,
+          amount:    "0.001",
+          currency:  "cUSD",
+          tool:      toolName,
+          settledAt: new Date().toISOString(),
+        }) : null
+        const responseBody = {
           jsonrpc: "2.0", id,
           result: { content: [{ type: "text", text: JSON.stringify(result) }], paymentStatus: "settled" },
-        })
+        }
+
+        if (idempKey) {
+          idempotencyStore.set(idempKey, { response: responseBody, receipt, expiry: Date.now() + IDEMPOTENCY_TTL })
+        }
+        if (receipt) res.setHeader("X-PAYMENT-RECEIPT", receipt)
+        res.json(responseBody)
       } catch (e) {
         console.error(`[mcp] Write tool ${toolName} error:`, e)
         res.json({ jsonrpc: "2.0", id, error: { code: -32603, message: safeError(e) } })
