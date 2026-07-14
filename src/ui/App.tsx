@@ -155,6 +155,8 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
   if (saveMatch) return { action: "supply_aave", params: { amount: saveMatch[1], asset: (saveMatch[2] || "cUSD").toUpperCase() } }
   const sendMatch = m.match(/(?:send|envoie|envoyer|transfer)\s+([\d.]+)\s+celo\s+(?:to|à|a)\s+(0x[a-f0-9]{40})/i)
   if (sendMatch) return { action: "send", params: { amount: sendMatch[1], to: sendMatch[2] } }
+  const unstakeMatch = m.match(/(?:unstake|un-stake|withdraw stcelo|désengager|retirer)\s+([\d.]+)/i)
+  if (unstakeMatch) return { action: "unstake", params: { amount: unstakeMatch[1] } }
   const stakeMatch = m.match(/(?:stake|staker|staking)\s+([\d.]+)/i)
   if (stakeMatch) return { action: "stake", params: { amount: stakeMatch[1] } }
   return null

@@ -520,7 +520,7 @@ The CeloBank Agent server enforces the following on all API endpoints:
 
 **CORS**: Browser requests must originate from a known origin. Non-browser clients (curl, Node.js SDK, mobile) without an `Origin` header pass through unrestricted.
 
-**x402 payment enforcement**: The 7 write MCP tools (`send_celo`, `swap_tokens`, `supply_aave`, `borrow_aave`, `repay_aave`, `launch_token`, `check_in`) require a valid `X-PAYMENT` header. The server verifies the payment on Celo Mainnet before executing and settles after. Insufficient or missing payment returns HTTP 402.
+**x402 payment enforcement**: The 7 write MCP tools (`send_celo`, `swap_celo`, `swap_tokens`, `save_cusd`, `stake_celo`, `unstake_celo`, `launch_token`) require a valid `X-PAYMENT` header. The server verifies the payment on Celo Mainnet before executing and settles after. Insufficient or missing payment returns HTTP 402. (Note: `borrow_aave`/`repay_aave` are not implemented — Aave integration is supply-only today — and DailyDrop check-in is a direct-wallet frontend feature, not an MCP tool, so it isn't part of this list.)
 
 **Supabase RLS**: `agent_actions` is locked to service-role only. `agent_stats` allows public SELECT; all writes are service-role only.
 

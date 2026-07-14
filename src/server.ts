@@ -358,7 +358,7 @@ This is the recommended approach — the agent never holds user funds.
       post: {
         tags: ["Prepare"],
         summary: "Prepare unsigned transactions (non-custodial)",
-        description: "Prepares DeFi transactions without signing them. Rate limited to 30 req/min.\n\n**Supported actions**: swap, supply_aave, send, stake, launch_token, get_tokens, get_trending",
+        description: "Prepares DeFi transactions without signing them. Rate limited to 30 req/min.\n\n**Supported actions**: swap, supply_aave, send, stake, unstake, launch_token, get_tokens, get_trending",
         requestBody: {
           required: true,
           content: {
@@ -367,7 +367,7 @@ This is the recommended approach — the agent never holds user funds.
                 type: "object",
                 required: ["action", "userAddress", "params"],
                 properties: {
-                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake", "launch_token", "get_tokens", "get_trending"], example: "swap" },
+                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake", "unstake", "launch_token", "get_tokens", "get_trending"], example: "swap" },
                   userAddress: { type: "string", example: "0xDEAc..." },
                   params:      { type: "object", description: "Action-specific parameters", example: { amount: "10", tokenOut: "cUSD" } },
                 },
@@ -568,7 +568,7 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
     if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
     if (!isValidAddress(params.to)) return res.status(400).json({ error: "params.to must be a valid Ethereum address" })
   }
-  if (action === "stake") {
+  if (action === "stake" || action === "unstake") {
     if (!isValidAmount(params.amount)) return res.status(400).json({ error: "params.amount must be a positive number" })
   }
   if (action === "launch_token") {
@@ -600,6 +600,10 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         result = await prepareStake(userAddress, params.amount)
         break
 
+      case "unstake":
+        result = await prepareUnstake(userAddress, params.amount)
+        break
+
       case "launch_token":
         result = await prepareLaunchToken(userAddress, params.name, params.symbol, params.totalSupply)
         break
@@ -611,7 +615,7 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         return res.json({ result: await getTokens() })
 
       default:
-        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, launch_token, get_tokens, get_trending` })
+        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, unstake, launch_token, get_tokens, get_trending` })
     }
 
     console.log(`✅ [prepare] ${action} — ${result.transactions.length} TX(s)`)
@@ -707,7 +711,7 @@ app.get("/api/v1/aave/:address", agentReadLimit, async (req, res) => {
 })
 
 // ─── GET /api/self-agent-status ───────────────────────────────────────────────
-app.get("/api/self-agent-status", async (_req, res) => {
+app.get("/api/self-agent-status", externalReadLimit, async (_req, res) => {
   try {
     const status = await getSelfAgentStatus()
     const ownerAddress = process.env.SELF_AGENT_OWNER_ADDRESS || AGENT_ADDRESS
@@ -721,7 +725,7 @@ app.get("/api/self-agent-status", async (_req, res) => {
 const SELF_REGISTER_MESSAGE = "CeloBank Agent: Initiate Self Agent ID Registration"
 
 // ─── POST /api/self-agent-register (owner-only) ────────────────────────────
-app.post("/api/self-agent-register", async (req, res) => {
+app.post("/api/self-agent-register", prepareLimit, async (req, res) => {
   const { ownerAddress, signature } = req.body
 
   if (!isValidAddress(ownerAddress)) {

@@ -2,6 +2,25 @@ import "dotenv/config"
 import express from "express"
 import crypto  from "crypto"
 import { runAgent } from "../agent/agent.js"
+import { UNSIGNED_TX_MARKER } from "../tools/prepare.js"
+
+const WEB_APP_URL = process.env.WEB_APP_URL ?? "https://celobank-agent.vercel.app"
+
+// Farcaster casts are text-only — there's no wallet-signing UI here. If the agent
+// prepared an unsigned transaction (write tools now always return one, never sign
+// themselves), don't post the raw marker + JSON blob publicly. Summarize it and
+// point the user to the web app, where the wallet-signing flow actually lives.
+function formatAgentReplyForCast(agentReply: string): string {
+  if (!agentReply.startsWith(UNSIGNED_TX_MARKER)) return agentReply
+  try {
+    const prepared = JSON.parse(agentReply.slice(UNSIGNED_TX_MARKER.length)) as { summary?: string; error?: string }
+    if (prepared.error) return `❌ ${prepared.error}`
+    const summary = prepared.summary || "Your transaction is ready to sign."
+    return `${summary}\n\n🔏 Sign it here: ${WEB_APP_URL}`
+  } catch {
+    return `✅ Ready to sign — complete this on the CeloBank app: ${WEB_APP_URL}`
+  }
+}
 
 const NEYNAR_API_KEY        = process.env.NEYNAR_API_KEY!
 const NEYNAR_SIGNER_UUID    = process.env.NEYNAR_BOT_SIGNER_UUID!
@@ -105,7 +124,8 @@ export function registerFarcasterBot(app: express.Express) {
             ? `${cleanText}. User wallet address: ${wallet}.`
             : cleanText
 
-          const agentReply = await runAgent(enriched)
+          const rawReply   = await runAgent(enriched)
+          const agentReply = formatAgentReplyForCast(rawReply)
           console.log(`   🤖 Réponse: ${agentReply.slice(0, 100)}…`)
 
           const username  = cast.author?.username
