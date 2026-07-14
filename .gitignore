@@ -35,3 +35,5 @@ src/ui/dist/
 .agents/
 .claude/
 skills-lock.json
+node_modules
+packages/*/node_modules
