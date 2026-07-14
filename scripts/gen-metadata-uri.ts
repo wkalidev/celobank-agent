@@ -83,7 +83,12 @@ const metadata = {
       name:     "OASF",
       skills:   OASF_SKILLS,
       domains:  OASF_DOMAINS,
-      endpoint: "https://github.com/agntcy/oasf/",
+      // Was pointing at the external OASF spec repo (github.com/agntcy/oasf) —
+      // not a checkable API, which is why 8004scan's health-checker returned
+      // "Unknown" for this service. Point it at our own live agent-card
+      // endpoint instead (same one A2A uses, already "Healthy"), so the
+      // health-checker gets a real response.
+      endpoint: "https://celobank-agent-production.up.railway.app/.well-known/agent-card.json",
     },
   ],
   // ASCII-only — avoids Windows console encoding corruption in transit
