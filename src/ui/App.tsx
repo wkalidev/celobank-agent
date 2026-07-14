@@ -543,6 +543,13 @@ export default function App() {
   const walletClientRef = useRef(walletClient)
   useEffect(() => { walletClientRef.current = walletClient }, [walletClient])
 
+  // Synchronous re-entrancy locks for check-in/claim. React state (`checking`/`claiming`)
+  // only flips after a render, so a fast double-click can fire doCheckIn()/doClaimReward()
+  // twice before the button disables — both calls then sign with the same wallet nonce and
+  // one fails with "nonce too low". A ref check is synchronous and closes that window.
+  const checkInLockRef = useRef(false)
+  const claimLockRef   = useRef(false)
+
   const loadStreak = useCallback(async () => {
     if (!address || !publicClientRef.current) return
     try {
@@ -558,17 +565,21 @@ export default function App() {
   useEffect(() => { loadStreak() }, [loadStreak])
 
   const doCheckIn = useCallback(async (): Promise<string> => {
+    if (checkInLockRef.current) return "⏳ Check-in already in progress — please wait."
     const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
     if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canCheckIn) {
       const next = streak.nextCheckIn > 0 ? new Date(streak.nextCheckIn * 1000).toLocaleTimeString() : "tomorrow"
       return `⏳ Already checked in today. Come back at ${next}`
     }
+    checkInLockRef.current = true
     setChecking(true)
     try {
-      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const feeNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
+      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, gas: 200000n, nonce: feeNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const checkInNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, gas: 200000n, nonce: checkInNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       const newStreak = streak.current + 1
       const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
@@ -580,25 +591,33 @@ export default function App() {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Check-in cancelled."
       if (msg.includes("already checked in")) { await loadStreak(); return "⏳ Already checked in today!" }
+      if (msg.includes("nonce too low") || msg.includes("nonce is lower")) {
+        await loadStreak()
+        return "⚠️ Transaction conflict (likely a double-click or a pending tx in your wallet). Refreshed your status — please try again."
+      }
       return `❌ Check-in failed: ${msg}`
-    } finally { setChecking(false) }
+    } finally { setChecking(false); checkInLockRef.current = false }
   }, [address, walletClient, publicClient, streak, loadStreak])
 
   const doClaimReward = useCallback(async (): Promise<string> => {
+    if (claimLockRef.current) return "⏳ Claim already in progress — please wait."
     const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
     if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
+    claimLockRef.current = true
     setClaiming(true)
     try {
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, gas: 200000n, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const claimNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, gas: 200000n, nonce: claimNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Claim cancelled."
+      if (msg.includes("nonce too low") || msg.includes("nonce is lower")) return "⚠️ Transaction conflict — please try again."
       return `❌ Claim failed: ${msg}`
-    } finally { setClaiming(false) }
+    } finally { setClaiming(false); claimLockRef.current = false }
   }, [address, walletClient, publicClient, streak])
 
   useEffect(() => {
