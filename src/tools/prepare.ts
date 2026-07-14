@@ -4,6 +4,7 @@ import {
   http,
   parseEther,
   parseUnits,
+  formatUnits,
   encodeFunctionData,
 } from "viem"
 import { defineChain } from "viem"
@@ -18,13 +19,22 @@ const celo = defineChain({
 
 export const publicClient = createPublicClient({ chain: celo, transport: http() })
 
+// Marker prefix used by the LangChain-facing write tools (celo.ts, defi.ts, staking.ts)
+// to signal that their string return value is actually a JSON-encoded PrepareResult
+// that server.ts must surface to the frontend as unsigned transactions — instead of
+// letting the model paraphrase it or (worse) executing it with the agent's own key.
+export const UNSIGNED_TX_MARKER = "__CELOBANK_UNSIGNED_TX__"
+
 // ─── Contract Addresses ───────────────────────────────────────────────────────
 const BROKER              = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
 const BI_POOL_MANAGER     = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
 const AAVE_POOL           = "0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
 const STAKED_CELO_MANAGER = "0x0239b96D10a434a56CC9E09383077A0490cF9398" as `0x${string}`
+const STAKED_CELO_TOKEN   = "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24" as `0x${string}`
 const UNISWAP_V3_ROUTER   = "0x5615CDAb10dc425a742d643d949a7F474C01abc4" as `0x${string}`
+const UNISWAP_V3_QUOTER   = "0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8" as `0x${string}`
 const UNISWAP_V3_FEE      = 3000 // 0.3%
+const DEFAULT_SLIPPAGE_BPS = 100n // 1% default slippage tolerance for swap quotes
 
 // ─── Token Registry (official Celo token list, chainId 42220) ────────────────
 // Symbols are canonical; USDm/EURm/BRLm are aliases for cUSD/cEUR/cREAL.
@@ -124,6 +134,48 @@ const BROKER_ABI = [
     outputs: [{ name: "amountOut", type: "uint256" }],
     stateMutability: "nonpayable",
   },
+  {
+    name: "getAmountOut",
+    type: "function",
+    inputs: [
+      { name: "exchangeProvider", type: "address" },
+      { name: "exchangeId",       type: "bytes32"  },
+      { name: "tokenIn",          type: "address"  },
+      { name: "tokenOut",         type: "address"  },
+      { name: "amountIn",         type: "uint256"  },
+    ],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const
+
+// QuoterV2 on Celo Mainnet — used for pre-flight Uniswap V3 quotes (slippage protection).
+// https://docs.celo.org/tooling/contracts/uniswap-contracts
+const QUOTER_V2_ABI = [
+  {
+    name: "quoteExactInputSingle",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn",           type: "address" },
+          { name: "tokenOut",          type: "address" },
+          { name: "amountIn",          type: "uint256" },
+          { name: "fee",               type: "uint24"  },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "amountOut",               type: "uint256" },
+      { name: "sqrtPriceX96After",       type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32"  },
+      { name: "gasEstimate",             type: "uint256" },
+    ],
+  },
 ] as const
 
 const AAVE_SUPPLY_ABI = [
@@ -170,6 +222,11 @@ const BI_POOL_MANAGER_ABI = [
   },
 ] as const
 
+// NOTE: the router deployed at UNISWAP_V3_ROUTER is Uniswap's SwapRouter02, not the
+// original SwapRouter. SwapRouter02's IV3SwapRouter.ExactInputSingleParams does NOT
+// include a `deadline` field (unlike ISwapRouter) — including one here changes the
+// function selector and makes every encoded swap revert on-chain. Verified against
+// https://github.com/Uniswap/swap-router-contracts/blob/main/contracts/interfaces/IV3SwapRouter.sol
 const UNISWAP_V3_ROUTER_ABI = [
   {
     name: "exactInputSingle",
@@ -183,7 +240,6 @@ const UNISWAP_V3_ROUTER_ABI = [
           { name: "tokenOut",          type: "address" },
           { name: "fee",               type: "uint24"  },
           { name: "recipient",         type: "address" },
-          { name: "deadline",          type: "uint256" },
           { name: "amountIn",          type: "uint256" },
           { name: "amountOutMinimum",  type: "uint256" },
           { name: "sqrtPriceLimitX96", type: "uint160" },
@@ -236,6 +292,57 @@ async function getExchangeId(
   return exchangeCache?.get(key) ?? null
 }
 
+// ─── Slippage Protection ──────────────────────────────────────────────────────
+function applySlippage(amountOut: bigint, slippageBps: bigint = DEFAULT_SLIPPAGE_BPS): bigint {
+  if (amountOut <= 0n) return 0n
+  return amountOut - (amountOut * slippageBps) / 10_000n
+}
+
+// Live quote from the Mento Broker. Returns null (never throws) if the quote fails —
+// callers fall back to amountOutMin = 0n and surface a warning to the user instead of
+// blocking the swap outright.
+async function quoteMentoAmountOut(
+  exchangeId: `0x${string}`,
+  tokenIn: `0x${string}`,
+  tokenOut: `0x${string}`,
+  amountIn: bigint
+): Promise<bigint | null> {
+  try {
+    const amountOut = await publicClient.readContract({
+      address:      BROKER,
+      abi:          BROKER_ABI,
+      functionName: "getAmountOut",
+      args:         [BI_POOL_MANAGER, exchangeId, tokenIn, tokenOut, amountIn],
+    })
+    return amountOut as bigint
+  } catch (e) {
+    console.error("[prepare] Mento getAmountOut quote failed:", e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+// Live quote from Uniswap V3 QuoterV2. quoteExactInputSingle is a non-view function
+// (it reverts internally to compute the output) but is safe and standard to call via
+// eth_call / simulateContract — no state is ever changed, no approval required.
+async function quoteUniswapAmountOut(
+  tokenIn: `0x${string}`,
+  tokenOut: `0x${string}`,
+  amountIn: bigint
+): Promise<bigint | null> {
+  try {
+    const { result } = await publicClient.simulateContract({
+      address:      UNISWAP_V3_QUOTER,
+      abi:          QUOTER_V2_ABI,
+      functionName: "quoteExactInputSingle",
+      args:         [{ tokenIn, tokenOut, amountIn, fee: UNISWAP_V3_FEE, sqrtPriceLimitX96: 0n }],
+    })
+    return (result as readonly [bigint, bigint, number, bigint])[0]
+  } catch (e) {
+    console.error("[prepare] Uniswap V3 quote failed:", e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 // ─── Prepare: Universal Swap ──────────────────────────────────────────────────
 // Routes CELO ↔ Mento stablecoin through Mento V2; all other pairs through Uniswap V3.
 export async function prepareSwap(
@@ -263,6 +370,12 @@ export async function prepareSwap(
       return { success: false, action: "swap", userAddress, transactions: [], summary: "", error: `No Mento V2 pool for ${inToken.sym}→${outToken.sym}` }
     }
 
+    const quotedOut  = await quoteMentoAmountOut(exchangeId, inToken.address, outToken.address, amountWei)
+    const amountOutMin = quotedOut !== null ? applySlippage(quotedOut) : 0n
+    const slippageWarning = quotedOut === null
+      ? " ⚠️ Live price quote unavailable — this swap has NO slippage protection (amountOutMin=0). Proceed with caution."
+      : ""
+
     const approveTx: UnsignedTx = {
       to:          inToken.address,
       data:        encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: "approve", args: [BROKER, amountWei] }),
@@ -271,21 +384,25 @@ export async function prepareSwap(
     }
     const swapTx: UnsignedTx = {
       to:          BROKER,
-      data:        encodeFunctionData({ abi: BROKER_ABI, functionName: "swapIn", args: [BI_POOL_MANAGER, exchangeId, inToken.address, outToken.address, amountWei, 0n] }),
+      data:        encodeFunctionData({ abi: BROKER_ABI, functionName: "swapIn", args: [BI_POOL_MANAGER, exchangeId, inToken.address, outToken.address, amountWei, amountOutMin] }),
       chainId:     42220,
-      description: `Swap ${amount} ${inToken.sym} → ${outToken.sym} via Mento V2`,
+      description: `Swap ${amount} ${inToken.sym} → ${outToken.sym} via Mento V2 (min. ${formatUnits(amountOutMin, outToken.decimals)} ${outToken.sym}, ~1% slippage)`,
     }
     return {
       success:      true,
       action:       "swap",
       userAddress,
       transactions: [approveTx, swapTx],
-      summary:      `Ready to swap ${amount} ${inToken.sym} → ${outToken.sym} via Mento V2. Sign 2 transactions: (1) Approve, (2) Swap.`,
+      summary:      `Ready to swap ${amount} ${inToken.sym} → ${outToken.sym} via Mento V2. Sign 2 transactions: (1) Approve, (2) Swap.${slippageWarning}`,
     }
   }
 
   // ── Uniswap V3 path ─────────────────────────────────────────────────────────
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800)
+  const quotedOutUni  = await quoteUniswapAmountOut(inToken.address, outToken.address, amountWei)
+  const amountOutMinUni = quotedOutUni !== null ? applySlippage(quotedOutUni) : 0n
+  const slippageWarningUni = quotedOutUni === null
+    ? " ⚠️ Live price quote unavailable — this swap has NO slippage protection (amountOutMinimum=0). Proceed with caution."
+    : ""
 
   const approveTx: UnsignedTx = {
     to:          inToken.address,
@@ -303,21 +420,20 @@ export async function prepareSwap(
         tokenOut:          outToken.address,
         fee:               UNISWAP_V3_FEE,
         recipient:         userAddress as `0x${string}`,
-        deadline,
         amountIn:          amountWei,
-        amountOutMinimum:  0n,
+        amountOutMinimum:  amountOutMinUni,
         sqrtPriceLimitX96: 0n,
       }],
     }),
     chainId:     42220,
-    description: `Swap ${amount} ${inToken.sym} → ${outToken.sym} via Uniswap V3 (0.3%)`,
+    description: `Swap ${amount} ${inToken.sym} → ${outToken.sym} via Uniswap V3 (0.3%, min. ${formatUnits(amountOutMinUni, outToken.decimals)} ${outToken.sym}, ~1% slippage)`,
   }
   return {
     success:      true,
     action:       "swap",
     userAddress,
     transactions: [approveTx, swapTx],
-    summary:      `Ready to swap ${amount} ${inToken.sym} → ${outToken.sym} via Uniswap V3. Sign 2 transactions: (1) Approve, (2) Swap.`,
+    summary:      `Ready to swap ${amount} ${inToken.sym} → ${outToken.sym} via Uniswap V3. Sign 2 transactions: (1) Approve, (2) Swap.${slippageWarningUni}`,
   }
 }
 
@@ -394,5 +510,43 @@ export async function prepareStake(
       description: `Stake ${amount} CELO → stCELO (~4% APY)`,
     }],
     summary: `Ready to stake ${amount} CELO. Sign 1 transaction to receive stCELO.`,
+  }
+}
+
+// ─── Prepare: Unstake stCELO ──────────────────────────────────────────────────
+const STAKED_CELO_WITHDRAW_ABI = [
+  {
+    name: "withdraw",
+    type: "function",
+    inputs: [{ name: "stakedCeloAmount", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const
+
+export async function prepareUnstake(
+  userAddress: string,
+  amount: string
+): Promise<PrepareResult> {
+  const amountWei = parseEther(amount)
+
+  const approveTx: UnsignedTx = {
+    to:          STAKED_CELO_TOKEN,
+    data:        encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: "approve", args: [STAKED_CELO_MANAGER, amountWei] }),
+    chainId:     42220,
+    description: `Approve ${amount} stCELO to Staked CELO Manager`,
+  }
+  const withdrawTx: UnsignedTx = {
+    to:          STAKED_CELO_MANAGER,
+    data:        encodeFunctionData({ abi: STAKED_CELO_WITHDRAW_ABI, functionName: "withdraw", args: [amountWei] }),
+    chainId:     42220,
+    description: `Unstake ${amount} stCELO → CELO (~3-day unbonding period)`,
+  }
+  return {
+    success:      true,
+    action:       "unstake",
+    userAddress,
+    transactions: [approveTx, withdrawTx],
+    summary:      `Ready to unstake ${amount} stCELO. Sign 2 transactions: (1) Approve, (2) Withdraw. CELO will be available after the ~3-day unbonding period.`,
   }
 }

@@ -2,6 +2,7 @@
 **CeloBank Agent Community Token**
 *Total Supply: 500,000,000 CBA*
 *Status: Pre-launch — Token does not exist yet. This is the initial distribution plan.*
+*See also: `docs/WHITEPAPER.md` §11 (Token) — the whitepaper explicitly states no token is deployed today and points here for the proposal.*
 
 ---
 

@@ -783,7 +783,33 @@ export default function App() {
       } else {
         const res = await fetch(`${API_URL}/api/v1/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }) })
         const data = await res.json()
-        setMessages(prev => [...prev, { role: "agent", content: data.response || data.error, timestamp: new Date() }])
+
+        // The AI decided to prepare a write action (send/swap/save/stake/launch) even
+        // though the local regex above didn't catch it — e.g. a phrasing in one of the
+        // other 18 supported languages. data.transactions holds unsigned tx(s) from the
+        // same non-custodial pipeline as /api/v1/prepare; route it through the identical
+        // wallet-signing flow instead of just printing raw text.
+        if (data.unsigned && Array.isArray(data.transactions) && data.transactions.length > 0) {
+          if (!address) {
+            setMessages(prev => [...prev, { role: "agent", content: `${data.response}\n\n❌ Wallet not connected. Please connect your wallet first.`, timestamp: new Date() }])
+            return
+          }
+          setMessages(prev => [...prev, { role: "agent", content: `> PREPARING TX...\n> ${data.response}\n> ${data.transactions.length} TX(s) to sign in your wallet...`, timestamp: new Date() }])
+
+          if (address && !walletClientRef.current) {
+            await new Promise<void>(resolve => setTimeout(resolve, 500))
+          }
+          const result = await executePrepared({
+            success: true,
+            action: data.action ?? "unknown",
+            userAddress: data.userAddress ?? address,
+            transactions: data.transactions,
+            summary: data.response,
+          })
+          setMessages(prev => [...prev, { role: "agent", content: result, timestamp: new Date() }])
+        } else {
+          setMessages(prev => [...prev, { role: "agent", content: data.response || data.error, timestamp: new Date() }])
+        }
       }
     } catch {
       setMessages(prev => [...prev, { role: "agent", content: "ERR_CONNECTION_FAILED: Cannot reach server.", timestamp: new Date() }])

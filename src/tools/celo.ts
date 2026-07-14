@@ -1,17 +1,15 @@
 import "dotenv/config"
 import {
   createPublicClient,
-  createWalletClient,
   http,
-  parseEther,
   formatEther,
   formatUnits,
-  parseUnits,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { defineChain } from "viem"
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
+import { prepareSend, UNSIGNED_TX_MARKER } from "./prepare.js"
 
 // ─── Chain ────────────────────────────────────────────────────────────────────
 const celo = defineChain({
@@ -21,11 +19,14 @@ const celo = defineChain({
   rpcUrls: { default: { http: [process.env.CELO_RPC ?? "https://forno.celo.org"] } },
 })
 
+// Read-only account/client — used ONLY as a fallback default address for read tools
+// (e.g. "what's my balance" with no address supplied) and for RPC gas estimation.
+// This wallet NEVER signs or broadcasts anything — all write actions below return
+// unsigned transactions that the CONNECTED USER's own wallet must sign.
 const rawKey = process.env.PRIVATE_KEY!.trim()
 const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`
 const account = privateKeyToAccount(privateKey as `0x${string}`)
 const publicClient = createPublicClient({ chain: celo, transport: http() })
-const walletClient = createWalletClient({ account, chain: celo, transport: http() })
 
 // ─── Token Registry ───────────────────────────────────────────────────────────
 const TOKENS: Record<string, { address: `0x${string}`; decimals: number; coingeckoId: string }> = {
@@ -36,34 +37,11 @@ const TOKENS: Record<string, { address: `0x${string}`; decimals: number; coingec
   USDC:   { address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6,  coingeckoId: "usd-coin" },
   USDT:   { address: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e", decimals: 6,  coingeckoId: "tether" },
   STCELO: { address: "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24", decimals: 18, coingeckoId: "staked-celo" },
-  G$:     { address: "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A", decimals: 18, coingeckoId: "good-dollar" },
-}
-
-// ─── Mento V2 ─────────────────────────────────────────────────────────────────
-const BROKER          = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
-const BI_POOL_MANAGER = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
-
-// Vrais Exchange IDs Mento V2 Mainnet
-const EXCHANGE_IDS: Record<string, `0x${string}`> = {
-  "CELO-cUSD":  "0x3135b662c38265d0655177091f1b647b4fef511103d06c016efdf18b46930d2c",
-  "CELO-cEUR":  "0x746455363e8f55d04e0a2cc040d1b348a6c031b336ba6af6ae91515c194929c8",
-  "CELO-cREAL": "0xd11d52b973ddbb983cc2087aabcafd915fc3140cf9996aacc61db9710d1bde05",
-  "CELO-USDC":  "0xacc988382b66ee5456086643dcfd9a5ca43dd8f428f6ef22503d8b8013bcffd7",
-  "CELO-USDT":  "0x773bcec109cee923b5e04706044fd9d6a5121b1a6a4c059c36fdbe5b845d4e9b",
+  "G$":   { address: "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A", decimals: 18, coingeckoId: "good-dollar" },
 }
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 const ERC20_ABI = [
-  {
-    name: "approve",
-    type: "function",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount",  type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-    stateMutability: "nonpayable",
-  },
   {
     name: "balanceOf",
     type: "function",
@@ -72,54 +50,6 @@ const ERC20_ABI = [
     stateMutability: "view",
   },
 ] as const
-
-const BROKER_ABI = [
-  {
-    name: "swapIn",
-    type: "function",
-    inputs: [
-      { name: "exchangeProvider", type: "address" },
-      { name: "exchangeId",       type: "bytes32"  },
-      { name: "tokenIn",          type: "address"  },
-      { name: "tokenOut",         type: "address"  },
-      { name: "amountIn",         type: "uint256"  },
-      { name: "amountOutMin",     type: "uint256"  },
-    ],
-    outputs: [{ name: "amountOut", type: "uint256" }],
-    stateMutability: "nonpayable",
-  },
-] as const
-
-const AAVE_POOL_ABI = [
-  {
-    name: "supply",
-    type: "function",
-    inputs: [
-      { name: "asset",        type: "address" },
-      { name: "amount",       type: "uint256" },
-      { name: "onBehalfOf",   type: "address" },
-      { name: "referralCode", type: "uint16"  },
-    ],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-  {
-    name: "getUserAccountData",
-    type: "function",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [
-      { name: "totalCollateralBase",         type: "uint256" },
-      { name: "totalDebtBase",               type: "uint256" },
-      { name: "availableBorrowsBase",        type: "uint256" },
-      { name: "currentLiquidationThreshold", type: "uint256" },
-      { name: "ltv",                         type: "uint256" },
-      { name: "healthFactor",                type: "uint256" },
-    ],
-    stateMutability: "view",
-  },
-] as const
-
-const AAVE_POOL = "0x3E59A31363E2a8B85aA1603a85FCe16E4A7B78c6" as `0x${string}`
 
 // ─── Tool 1 : Portefeuille complet ────────────────────────────────────────────
 export const getPortfolioTool = tool(
@@ -200,145 +130,31 @@ export const getMultiPriceTool = tool(
   }
 )
 
-// ─── Tool 3 : Swap CELO → stablecoin via Mento V2 ────────────────────────────
-export const swapCeloTool = tool(
-  async ({ amount, tokenOut }) => {
-    try {
-      const symbol = tokenOut.toUpperCase()
-      const token = TOKENS[symbol]
-      if (!token) return `Token ${symbol} non supporté. Disponibles : cUSD, cEUR, cREAL, USDC, USDT`
-
-      const exchangeKey = `CELO-${symbol}`
-      const exchangeId = EXCHANGE_IDS[exchangeKey]
-      if (!exchangeId) return `Swap CELO→${symbol} non disponible via Mento V2`
-
-      const parsed = parseEther(amount)
-
-      const approveHash = await walletClient.writeContract({
-        address: TOKENS.CELO.address,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [BROKER, parsed],
-      })
-      console.log(`  ✅ Approve TX : ${approveHash}`)
-
-      const hash = await walletClient.writeContract({
-        address: BROKER,
-        abi: BROKER_ABI,
-        functionName: "swapIn",
-        args: [BI_POOL_MANAGER, exchangeId, TOKENS.CELO.address, token.address, parsed, 0n],
-      })
-
-      return [
-        `✅ Swap réussi ! ${amount} CELO → ${symbol}`,
-        `TX : https://celoscan.io/tx/${hash}`,
-      ].join("\n")
-    } catch (e) {
-      return `Erreur swap : ${e}`
-    }
-  },
-  {
-    name: "swap_celo",
-    description: "Échange des CELO contre un stablecoin (cUSD, cEUR, cREAL) via Mento V2",
-    schema: z.object({
-      amount: z.string().describe("Montant CELO à échanger, ex : 1"),
-      tokenOut: z.string().describe("Token de sortie : cUSD, cEUR ou cREAL"),
-    }),
-  }
-)
-
-// ─── Tool 4 : Envoyer CELO ────────────────────────────────────────────────────
+// ─── Tool 3 : Envoyer CELO (non-custodial) ────────────────────────────────────
+// Returns an UNSIGNED_TX_MARKER-prefixed JSON blob (a PrepareResult) instead of
+// signing anything itself. server.ts detects the marker and hands the unsigned
+// transaction to the frontend, which the connected user's own wallet signs.
+// NEVER sign or broadcast here — the agent wallet must stay read-only.
 export const sendCeloTool = tool(
-  async ({ to, amount }) => {
+  async ({ userAddress, to, amount }) => {
     try {
-      const hash = await walletClient.sendTransaction({
-        to: to as `0x${string}`,
-        value: parseEther(amount),
-      })
-      return `✅ Envoi réussi ! ${amount} CELO → ${to}\nTX : https://celoscan.io/tx/${hash}`
+      const result = await prepareSend(userAddress, to, amount)
+      return UNSIGNED_TX_MARKER + JSON.stringify(result)
     } catch (e) {
-      return `Erreur envoi : ${e}`
+      return `Erreur préparation envoi : ${e instanceof Error ? e.message : String(e)}`
     }
   },
   {
     name: "send_celo",
-    description: "Envoie des CELO à une adresse wallet",
+    description: "Prepare an unsigned transaction to send CELO to an address. The connected user's wallet signs it — this tool never moves funds itself.",
     schema: z.object({
+      userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
       to: z.string().describe("Adresse destinataire 0x..."),
       amount: z.string().describe("Montant en CELO, ex: 0.5"),
     }),
   }
 )
 
-// ─── Tool 5 : Position Aave ───────────────────────────────────────────────────
-export const getAavePositionTool = tool(
-  async ({ address }) => {
-    try {
-      const addr = (address || account.address) as `0x${string}`
-      const data = await publicClient.readContract({
-        address: AAVE_POOL,
-        abi: AAVE_POOL_ABI,
-        functionName: "getUserAccountData",
-        args: [addr],
-      })
-      const [collateral, debt, available, , , healthFactor] = data
-      return [
-        "📊 Position Aave sur Celo Mainnet :",
-        `• Collateral    : $${formatUnits(collateral, 8)} USD`,
-        `• Dette         : $${formatUnits(debt, 8)} USD`,
-        `• Disponible    : $${formatUnits(available, 8)} USD`,
-        `• Health Factor : ${formatUnits(healthFactor, 18)}`,
-      ].join("\n")
-    } catch (e) {
-      return `Erreur lecture position Aave : ${e}`
-    }
-  },
-  {
-    name: "get_aave_position",
-    description: "Vérifie la position DeFi sur Aave (collateral, dette, health factor)",
-    schema: z.object({
-      address: z.string().optional().describe("Adresse wallet 0x... (optionnel)"),
-    }),
-  }
-)
-
-// ─── Tool 6 : Épargne sur Aave ────────────────────────────────────────────────
-export const saveCUSDTool = tool(
-  async ({ amount }) => {
-    try {
-      const parsed = parseUnits(amount, 18)
-      const approveHash = await walletClient.writeContract({
-        address: TOKENS.cUSD.address,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [AAVE_POOL, parsed],
-      })
-      console.log(`  ✅ Approve TX : ${approveHash}`)
-      const supplyHash = await walletClient.writeContract({
-        address: AAVE_POOL,
-        abi: AAVE_POOL_ABI,
-        functionName: "supply",
-        args: [TOKENS.cUSD.address, parsed, account.address, 0],
-      })
-      return [
-        `✅ ${amount} cUSD déposés sur Aave !`,
-        `TX : https://celoscan.io/tx/${supplyHash}`,
-        "Vous gagnez des intérêts automatiquement. 💰",
-      ].join("\n")
-    } catch (e) {
-      return `Erreur dépôt Aave : ${e}`
-    }
-  },
-  {
-    name: "save_cusd",
-    description: "Dépose des cUSD sur Aave pour générer des intérêts automatiquement",
-    schema: z.object({
-      amount: z.string().describe("Montant en cUSD, ex : 10"),
-    }),
-  }
-)
-
 // ─── Exports ──────────────────────────────────────────────────────────────────
-export const swapCeloToCUSDTool = swapCeloTool
-export const getBalanceTool = getPortfolioTool
+export const getBalanceTool   = getPortfolioTool
 export const getCeloPriceTool = getMultiPriceTool

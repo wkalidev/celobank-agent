@@ -528,6 +528,12 @@ The CeloBank Agent server enforces the following on all API endpoints:
 
 ## Changelog
 
+### v1.1.1
+- **Critical fix**: the Uniswap V3 `exactInputSingle` ABI used by `swap()` and `swapTokens()` included a `deadline` field that does not exist on `SwapRouter02` (the router actually deployed on Celo Mainnet). This produced the wrong function selector, causing every non-Mento swap (any pair besides CELO↔stablecoin) to revert on-chain. Fixed.
+- Added live slippage protection to `swap()` and `swapTokens()` — Mento V2 quotes via `Broker.getAmountOut`, Uniswap V3 quotes via `QuoterV2.quoteExactInputSingle`, both with a 1% default tolerance applied to `amountOutMin`/`amountOutMinimum`. Previously both were hardcoded to `0n` (no MEV/sandwich protection). If a live quote fails, the SDK falls back to `0n` rather than throwing, so calls degrade gracefully instead of blocking — callers who need guaranteed protection should check `SwapResult` and treat a suspiciously large slippage as a signal to retry.
+- Added `getAmountOut` to `BROKER_ABI` in `abis.ts` to support the new Mento quoting.
+- Note: this SDK's `swap()`/`send()`/etc. sign transactions with the private key passed into the constructor by design — that's the intended usage for developers building their own autonomous agents. This is different from the main CeloBank Agent app (server + chat UI), which is strictly non-custodial and never holds a private key; that fix was separate and unrelated to this SDK.
+
 ### v1.1.0
 - x402 payment enforcement on all 7 MCP write tools (verify → execute → settle, 0.001 cUSD per call)
 - OASF-compliant agent card at `/.well-known/agent-card.json`

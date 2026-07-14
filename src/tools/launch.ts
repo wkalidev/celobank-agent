@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { encodeFunctionData, parseEther, formatEther } from "viem"
-import { publicClient } from "./prepare.js"
+import { publicClient, UNSIGNED_TX_MARKER } from "./prepare.js"
 import type { PrepareResult, UnsignedTx } from "./prepare.js"
 
 const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e") as `0x${string}`
@@ -142,8 +142,11 @@ export async function getTrendingTokens(): Promise<string> {
 // ─── LangChain-style tool wrappers ────────────────────────────────────────────
 export const launchTokenTool = {
   invoke: async (args: { userAddress?: string; name: string; symbol: string; totalSupply: string }) => {
-    const result = await prepareLaunchToken(args.userAddress ?? "", args.name, args.symbol, args.totalSupply)
-    return JSON.stringify(result)
+    if (!args.userAddress) {
+      return `❌ Cannot prepare launch_token: userAddress (the connected user's wallet) is required.`
+    }
+    const result = await prepareLaunchToken(args.userAddress, args.name, args.symbol, args.totalSupply)
+    return UNSIGNED_TX_MARKER + JSON.stringify(result)
   },
 }
 

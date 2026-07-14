@@ -1,17 +1,14 @@
 import "dotenv/config"
 import {
   createPublicClient,
-  createWalletClient,
   http,
-  parseEther,
   formatEther,
-  formatUnits,
-  parseUnits,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { defineChain } from "viem"
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
+import { prepareStake, prepareUnstake, UNSIGNED_TX_MARKER } from "./prepare.js"
 
 // ─── Chain ────────────────────────────────────────────────────────────────────
 const celo = defineChain({
@@ -21,32 +18,15 @@ const celo = defineChain({
   rpcUrls: { default: { http: [process.env.CELO_RPC ?? "https://forno.celo.org"] } },
 })
 
+// Read-only account/client — fallback default address for read tools only.
+// This wallet NEVER signs or broadcasts write transactions (non-custodial v2).
 const rawKey = process.env.PRIVATE_KEY!.trim()
 const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`
 const account = privateKeyToAccount(privateKey as `0x${string}`)
 const publicClient = createPublicClient({ chain: celo, transport: http() })
-const walletClient = createWalletClient({ account, chain: celo, transport: http() })
 
 // ─── Staked CELO (stCELO) ────────────────────────────────────────────────────
-const STAKED_CELO_MANAGER = "0x0239b96D10a434a56CC9E09383077A0490cF9398" as `0x${string}`
-const STAKED_CELO_TOKEN   = "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24" as `0x${string}`
-
-const STAKED_CELO_MANAGER_ABI = [
-  {
-    name: "deposit",
-    type: "function",
-    inputs: [],
-    outputs: [],
-    stateMutability: "payable",
-  },
-  {
-    name: "withdraw",
-    type: "function",
-    inputs: [{ name: "stakedCeloAmount", type: "uint256" }],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-] as const
+const STAKED_CELO_TOKEN = "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24" as `0x${string}`
 
 const ERC20_ABI = [
   {
@@ -56,19 +36,9 @@ const ERC20_ABI = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
-  {
-    name: "approve",
-    type: "function",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-  },
 ] as const
 
-// ─── Ubeswap Pools (top yield) ────────────────────────────────────────────────
+// ─── Yield options (informational) ────────────────────────────────────────────
 const YIELD_OPTIONS = [
   {
     protocol: "Staked CELO",
@@ -129,100 +99,43 @@ const YIELD_OPTIONS = [
   },
 ]
 
-// ─── Tool: Stake CELO ─────────────────────────────────────────────────────────
+// ─── Tool: Stake CELO (non-custodial) ─────────────────────────────────────────
+// Delegates to prepare.ts — returns an unsigned transaction the connected user
+// signs. The agent wallet never deposits its own funds on the user's behalf.
 export const stakeCeloTool = tool(
-  async ({ amount }: { amount: string }) => {
+  async ({ userAddress, amount }: { userAddress: string; amount: string }) => {
     try {
-      const amountWei = parseEther(amount)
-
-      // Check balance
-      const balance = await publicClient.getBalance({ address: account.address })
-      if (balance < amountWei + parseEther("0.01")) {
-        return `❌ Insufficient CELO balance. You have ${formatEther(balance)} CELO, need ${amount} + gas.`
-      }
-
-      // Deposit to Staked CELO Manager
-      const hash = await walletClient.writeContract({
-        address: STAKED_CELO_MANAGER,
-        abi: STAKED_CELO_MANAGER_ABI,
-        functionName: "deposit",
-        value: amountWei,
-      })
-
-      // Get stCELO balance after
-      const stCeloBalance = await publicClient.readContract({
-        address: STAKED_CELO_TOKEN,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [account.address],
-      })
-
-      return `✅ Staked ${amount} CELO successfully!
-> TX Hash: ${hash}
-> Explorer: https://celoscan.io/tx/${hash}
-> stCELO Balance: ${formatEther(stCeloBalance)} stCELO
-> APY: ~4% (Celo validator rewards)
-> Lockup: None — unstake anytime`
+      const result = await prepareStake(userAddress, amount)
+      return UNSIGNED_TX_MARKER + JSON.stringify(result)
     } catch (e: unknown) {
       return `❌ Staking failed: ${e instanceof Error ? e.message : String(e)}`
     }
   },
   {
     name: "stake_celo",
-    description: "Stake CELO to earn ~4% APY via Staked CELO (stCELO). Liquid staking, no lockup.",
+    description: "Prepare an unsigned transaction to stake CELO and earn ~4% APY via Staked CELO (stCELO). The connected user signs it.",
     schema: z.object({
+      userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
       amount: z.string().describe("Amount of CELO to stake (e.g. '10')"),
     }),
   }
 )
 
-// ─── Tool: Unstake CELO ───────────────────────────────────────────────────────
+// ─── Tool: Unstake CELO (non-custodial) ───────────────────────────────────────
 export const unstakeCeloTool = tool(
-  async ({ amount }: { amount: string }) => {
+  async ({ userAddress, amount }: { userAddress: string; amount: string }) => {
     try {
-      const amountWei = parseEther(amount)
-
-      // Check stCELO balance
-      const stBalance = await publicClient.readContract({
-        address: STAKED_CELO_TOKEN,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [account.address],
-      })
-
-      if (stBalance < amountWei) {
-        return `❌ Insufficient stCELO balance. You have ${formatEther(stBalance)} stCELO.`
-      }
-
-      // Approve Manager to spend stCELO
-      const approveTx = await walletClient.writeContract({
-        address: STAKED_CELO_TOKEN,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [STAKED_CELO_MANAGER, amountWei],
-      })
-      await publicClient.waitForTransactionReceipt({ hash: approveTx })
-
-      // Withdraw
-      const hash = await walletClient.writeContract({
-        address: STAKED_CELO_MANAGER,
-        abi: STAKED_CELO_MANAGER_ABI,
-        functionName: "withdraw",
-        args: [amountWei],
-      })
-
-      return `✅ Unstaked ${amount} stCELO successfully!
-> TX Hash: ${hash}
-> Explorer: https://celoscan.io/tx/${hash}
-> CELO will be received after unbonding period (~3 days)`
+      const result = await prepareUnstake(userAddress, amount)
+      return UNSIGNED_TX_MARKER + JSON.stringify(result)
     } catch (e: unknown) {
       return `❌ Unstaking failed: ${e instanceof Error ? e.message : String(e)}`
     }
   },
   {
     name: "unstake_celo",
-    description: "Unstake stCELO back to CELO. Unbonding period ~3 days.",
+    description: "Prepare an unsigned transaction to unstake stCELO back to CELO. Unbonding period ~3 days. The connected user signs it.",
     schema: z.object({
+      userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
       amount: z.string().describe("Amount of stCELO to unstake"),
     }),
   }

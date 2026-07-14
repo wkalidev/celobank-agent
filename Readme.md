@@ -449,6 +449,8 @@ CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilder
 | **No SQL** | All blockchain interaction via viem — no SQL queries, no SQL injection surface |
 | **Secrets** | All credentials in `.env` (gitignored); no hardcoded keys in source |
 | **Headers** | `X-Powered-By` removed; `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` set |
+| **Non-custodial enforcement** | Every write action (chat tool-calling AND `/api/v1/prepare`) returns an unsigned transaction — the agent wallet (`PRIVATE_KEY`) is never used to sign or broadcast user-initiated transactions, only for read-only RPC calls |
+| **Slippage protection** | Live quotes before every swap — Mento V2 via `Broker.getAmountOut`, Uniswap V3 via `QuoterV2` — with a 1% default tolerance applied to the on-chain minimum-output guard |
 
 ---
 

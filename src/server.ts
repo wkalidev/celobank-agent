@@ -8,7 +8,8 @@ import { existsSync } from "fs"
 import { runAgent, toolRegistry } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { verifyMessage } from "viem"
-import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake } from "./tools/prepare.js"
+import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnstake, UNSIGNED_TX_MARKER } from "./tools/prepare.js"
+import type { PrepareResult } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
 
@@ -116,6 +117,20 @@ function safeError(e: unknown): string {
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY! as `0x${string}`)
 const AGENT_ADDRESS = account.address
+
+// If a write tool prepared an unsigned transaction (marked by UNSIGNED_TX_MARKER,
+// see tools/prepare.ts), extract it so the frontend can route it through the same
+// wallet-signing flow used by /api/v1/prepare — instead of dumping raw JSON as chat
+// text, or worse, silently doing nothing useful.
+function extractUnsignedTx(agentResponse: string): PrepareResult | null {
+  if (!agentResponse.startsWith(UNSIGNED_TX_MARKER)) return null
+  try {
+    return JSON.parse(agentResponse.slice(UNSIGNED_TX_MARKER.length)) as PrepareResult
+  } catch (e) {
+    console.error("[chat] Failed to parse unsigned tx payload:", e instanceof Error ? e.message : e)
+    return null
+  }
+}
 
 // ─── x402 payment infrastructure ──────────────────────────────────────────────
 const CUSD_ADDRESS     = "0x765DE816845861e75A25fCA122bb6898B8B1282a"
@@ -471,6 +486,24 @@ app.post("/api/v1/chat", chatLimit, async (req, res) => {
     const response = await runAgent(enrichedMessage)
     console.log(`🤖 Agent response sent (${response.length} chars)`)
 
+    // If the model called a write tool, response is a JSON-encoded PrepareResult
+    // (unsigned transactions) rather than natural-language text — surface it as
+    // such so the frontend can execute it through the wallet-signing flow.
+    const prepared = extractUnsignedTx(response)
+    if (prepared) {
+      if (!prepared.success) {
+        return res.json({ response: `❌ ${prepared.error ?? "Preparation failed"}`, language: lang })
+      }
+      return res.json({
+        response:     prepared.summary,
+        language:     lang,
+        unsigned:     true,
+        action:       prepared.action,
+        userAddress:  prepared.userAddress,
+        transactions: prepared.transactions,
+      })
+    }
+
     res.json({ response, language: lang })
   } catch (e) {
     res.status(500).json({ error: safeError(e) })
@@ -490,6 +523,19 @@ app.post("/chat", chatLimit, async (req, res) => {
     const walletAddress   = isValidAddress(userAddress) ? userAddress : AGENT_ADDRESS
     const enrichedMessage = `${langHint} ${message}. User wallet address: ${walletAddress}.`
     const response        = await runAgent(enrichedMessage)
+
+    const prepared = extractUnsignedTx(response)
+    if (prepared) {
+      if (!prepared.success) return res.json({ response: `❌ ${prepared.error ?? "Preparation failed"}` })
+      return res.json({
+        response:     prepared.summary,
+        unsigned:     true,
+        action:       prepared.action,
+        userAddress:  prepared.userAddress,
+        transactions: prepared.transactions,
+      })
+    }
+
     res.json({ response })
   } catch (e) {
     res.status(500).json({ error: safeError(e) })
@@ -718,7 +764,7 @@ app.get("/health", (_, res) => res.json({
   agent:   "CeloBank Agent API v2.0.0",
   wallet:  `${AGENT_ADDRESS.slice(0, 6)}...${AGENT_ADDRESS.slice(-4)}`,
   network: "Celo Mainnet (Chain ID: 42220)",
-  sdk:     "@celobank/agent-sdk@1.0.5",
+  sdk:     "@celobank/agent-sdk@1.1.1",
   mode:    "non-custodial (v2)",
   tools:   21,
   docs:    "/docs",
@@ -909,6 +955,10 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
     if (WRITE_TOOL_NAMES.has(toolName)) {
       const idempKey = (req.headers["idempotency-key"] as string | undefined)?.trim() || null
       if (idempKey) {
+        if (idempKey.length > 256) {
+          res.status(400).json({ error: "Idempotency-Key must be 256 characters or fewer" })
+          return
+        }
         const cached = idempotencyStore.get(idempKey)
         if (cached && cached.expiry > Date.now()) {
           if (cached.receipt) res.setHeader("X-PAYMENT-RECEIPT", cached.receipt)
@@ -965,8 +1015,9 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
             break
 
           case "unstake_celo":
-            res.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "unstake_celo via MCP returns unsigned calldata — sign the returned tx with your wallet to complete the 3-day unbonding" } })
-            return
+            if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
+            result = await prepareUnstake(userAddress, toolArgs.amount)
+            break
 
           case "launch_token":
             if (!toolArgs.name)                        { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.name is required" } }); return }
@@ -998,6 +1049,10 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
         }
 
         if (idempKey) {
+          if (idempotencyStore.size >= 10_000) {
+            const oldest = idempotencyStore.keys().next().value
+            if (oldest !== undefined) idempotencyStore.delete(oldest)
+          }
           idempotencyStore.set(idempKey, { response: responseBody, receipt, expiry: Date.now() + IDEMPOTENCY_TTL })
         }
         if (receipt) res.setHeader("X-PAYMENT-RECEIPT", receipt)

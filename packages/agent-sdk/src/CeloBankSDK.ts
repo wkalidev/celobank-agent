@@ -45,6 +45,10 @@ import type {
 } from "./types.js"
 
 // ─── Uniswap V3 Router ABI ────────────────────────────────────────────────────
+// NOTE: UNISWAP_V3_ROUTER (see constants.ts) is Uniswap's SwapRouter02, not the
+// original SwapRouter. SwapRouter02's IV3SwapRouter.ExactInputSingleParams does NOT
+// include a `deadline` field — including one changes the function selector and makes
+// every encoded swap revert on-chain. https://github.com/Uniswap/swap-router-contracts/blob/main/contracts/interfaces/IV3SwapRouter.sol
 const UNISWAP_V3_ROUTER_ABI = [
   {
     name: "exactInputSingle",
@@ -54,7 +58,6 @@ const UNISWAP_V3_ROUTER_ABI = [
       { name: "tokenOut",          type: "address" },
       { name: "fee",               type: "uint24"  },
       { name: "recipient",         type: "address" },
-      { name: "deadline",          type: "uint256" },
       { name: "amountIn",          type: "uint256" },
       { name: "amountOutMinimum",  type: "uint256" },
       { name: "sqrtPriceLimitX96", type: "uint160" },
@@ -63,6 +66,30 @@ const UNISWAP_V3_ROUTER_ABI = [
     stateMutability: "payable",
   },
 ] as const
+
+// QuoterV2 on Celo Mainnet — used for pre-flight Uniswap V3 quotes (slippage protection).
+const UNISWAP_V3_QUOTER = "0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8" as `0x${string}`
+const QUOTER_V2_ABI = [
+  {
+    name: "quoteExactInputSingle",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "params", type: "tuple", components: [
+      { name: "tokenIn",           type: "address" },
+      { name: "tokenOut",          type: "address" },
+      { name: "amountIn",          type: "uint256" },
+      { name: "fee",               type: "uint24"  },
+      { name: "sqrtPriceLimitX96", type: "uint160" },
+    ]}],
+    outputs: [
+      { name: "amountOut",               type: "uint256" },
+      { name: "sqrtPriceX96After",       type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32"  },
+      { name: "gasEstimate",             type: "uint256" },
+    ],
+  },
+] as const
+const DEFAULT_SLIPPAGE_BPS = 100n // 1% default slippage tolerance
 
 // ─── Token Factory ABI ────────────────────────────────────────────────────────
 const TOKEN_FACTORY_ABI = [
@@ -331,11 +358,13 @@ export class CeloBankSDK {
       functionName: "approve", args: [MENTO_BROKER, parsed],
     })
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash })
+    const quote = await this._quoteMentoAmountOut(exchangeId, TOKENS.CELO.address, token.address, parsed)
+    const amountOutMin = quote !== null ? this._applySlippage(quote) : 0n
     const txHash = await this.walletClient.writeContract({
       account: this.account, chain: celoMainnet,
       address: MENTO_BROKER, abi: BROKER_ABI,
       functionName: "swapIn",
-      args: [MENTO_BI_POOL_MANAGER, exchangeId, TOKENS.CELO.address, token.address, parsed, 0n],
+      args: [MENTO_BI_POOL_MANAGER, exchangeId, TOKENS.CELO.address, token.address, parsed, amountOutMin],
     })
     return {
       success: true, amountIn: params.amount, tokenOut: symbol,
@@ -411,24 +440,27 @@ export class CeloBankSDK {
       const stableToken = inToken.sym === "CELO" ? outToken : inToken
       const exchangeId  = await this._getExchangeId(stableToken.address as `0x${string}`)
       if (!exchangeId) throw new Error(`No Mento V2 pool for ${inToken.sym}→${outToken.sym}`)
+      const quote = await this._quoteMentoAmountOut(exchangeId, inToken.address, outToken.address, amountWei)
+      const amountOutMin = quote !== null ? this._applySlippage(quote) : 0n
       const txHash = await this.walletClient.writeContract({
         account: this.account, chain: celoMainnet,
         address: MENTO_BROKER, abi: BROKER_ABI,
         functionName: "swapIn",
-        args: [MENTO_BI_POOL_MANAGER, exchangeId, inToken.address, outToken.address, amountWei, 0n],
+        args: [MENTO_BI_POOL_MANAGER, exchangeId, inToken.address, outToken.address, amountWei, amountOutMin],
       })
       return { success: true, amountIn: params.amount, tokenOut: outToken.sym, txHash, explorerUrl: `https://celoscan.io/tx/${txHash}` }
     }
 
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800)
+    const uniQuote = await this._quoteUniswapAmountOut(inToken.address, outToken.address, amountWei)
+    const amountOutMinimum = uniQuote !== null ? this._applySlippage(uniQuote) : 0n
     const txHash = await this.walletClient.writeContract({
       account: this.account, chain: celoMainnet,
       address: UNISWAP_V3_ROUTER, abi: UNISWAP_V3_ROUTER_ABI,
       functionName: "exactInputSingle",
       args: [{
         tokenIn: inToken.address, tokenOut: outToken.address,
-        fee: UNISWAP_V3_FEE, recipient: this.address, deadline,
-        amountIn: amountWei, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n,
+        fee: UNISWAP_V3_FEE, recipient: this.address,
+        amountIn: amountWei, amountOutMinimum, sqrtPriceLimitX96: 0n,
       }],
     })
     return { success: true, amountIn: params.amount, tokenOut: outToken.sym, txHash, explorerUrl: `https://celoscan.io/tx/${txHash}` }
@@ -631,6 +663,50 @@ export class CeloBankSDK {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /** Applies the default slippage tolerance (1%) to a quoted output amount. */
+  private _applySlippage(quote: bigint, bps: bigint = DEFAULT_SLIPPAGE_BPS): bigint {
+    return quote - (quote * bps) / 10000n
+  }
+
+  /** Live Mento V2 quote via Broker.getAmountOut — returns null on failure (caller falls back to 0n, no protection). */
+  private async _quoteMentoAmountOut(
+    exchangeId: `0x${string}`,
+    tokenIn: `0x${string}`,
+    tokenOut: `0x${string}`,
+    amountIn: bigint,
+  ): Promise<bigint | null> {
+    try {
+      const amountOut = await this.publicClient.readContract({
+        address: MENTO_BROKER, abi: BROKER_ABI,
+        functionName: "getAmountOut",
+        args: [MENTO_BI_POOL_MANAGER, exchangeId, tokenIn, tokenOut, amountIn],
+      })
+      return amountOut as bigint
+    } catch {
+      return null
+    }
+  }
+
+  /** Live Uniswap V3 quote via QuoterV2.quoteExactInputSingle (simulated call) — returns null on failure. */
+  private async _quoteUniswapAmountOut(
+    tokenIn: `0x${string}`,
+    tokenOut: `0x${string}`,
+    amountIn: bigint,
+  ): Promise<bigint | null> {
+    try {
+      const { result } = await this.publicClient.simulateContract({
+        account: this.account,
+        address: UNISWAP_V3_QUOTER, abi: QUOTER_V2_ABI,
+        functionName: "quoteExactInputSingle",
+        args: [{ tokenIn, tokenOut, amountIn, fee: UNISWAP_V3_FEE, sqrtPriceLimitX96: 0n }],
+      })
+      const [amountOut] = result as [bigint, bigint, number, bigint]
+      return amountOut
+    } catch {
+      return null
+    }
+  }
 
   private async _getExchangeId(tokenAddress: `0x${string}`): Promise<`0x${string}` | null> {
     const BI_POOL_ABI = [{

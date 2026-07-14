@@ -10,7 +10,7 @@
 
 CeloBank Agent addresses the interface problem directly. It is a non-custodial, conversational DeFi agent deployed on Celo Mainnet (Chain ID 42220) that exposes 21 on-chain tools — swapping, lending, staking, token launch, yield discovery, and more — through natural language in 19 languages. Users sign every transaction with their own wallet; the agent never holds funds or private keys.
 
-CeloBank Agent is also an open platform. The `@celobank/agent-sdk` npm package (v1.0.9) lets any developer build their own autonomous DeFi agent on Celo in minutes. A machine-readable `/catalog` endpoint — implementing the x402-catalog/1.0 schema — enables autonomous agent-to-agent commerce: any AI agent can discover, price, and call CeloBank tools programmatically without human mediation.
+CeloBank Agent is also an open platform. The `@celobank/agent-sdk` npm package (v1.1.1) lets any developer build their own autonomous DeFi agent on Celo in minutes. A machine-readable `/catalog` endpoint — implementing the x402-catalog/1.0 schema — enables autonomous agent-to-agent commerce: any AI agent can discover, price, and call CeloBank tools programmatically without human mediation.
 
 This document describes the system's architecture, protocol integrations, security model, and on-chain identity as they exist today. Planned future work is clearly labeled as **Roadmap**.
 
@@ -84,7 +84,7 @@ CeloBank Agent is two things simultaneously:
 | Custody model | Non-custodial — user signs all transactions |
 | AI primary | Anthropic Claude Sonnet 4.6 |
 | AI fallback | Groq LLaMA 3.3-70b |
-| SDK | `@celobank/agent-sdk` v1.0.9 |
+| SDK | `@celobank/agent-sdk` v1.1.1 |
 | On-chain identity | ERC-8004 agent #9225 |
 | Token | None |
 
@@ -360,7 +360,7 @@ CeloBank Agent's x402 configuration:
 
 Payment is not captured on failure. If an on-chain action reverts after payment authorization, the `X-PAYMENT` is voided and not settled. The catalog's `schemas.failureRefund` field documents this guarantee with explicit state transitions: `pending → settled | failed | refunded`.
 
-> **Note**: x402 payment enforcement is declared in the catalog but not yet enforced at the server middleware layer. The catalog is an accurate declaration of the intended contract; enforcement is on the roadmap.
+> **Status**: x402 payment enforcement is live at the server layer — `POST /mcp` verifies the `X-PAYMENT` header against the facilitator before executing any write tool, and settles only after the on-chain action succeeds (see `handleMcpRpc` in `src/server.ts`). Idempotency-Key deduplication (24h window) is also enforced.
 
 ### 6.3 MCP Endpoint
 
@@ -412,7 +412,7 @@ Additional AgentCard fields:
 npm install @celobank/agent-sdk
 ```
 
-- **npm**: `@celobank/agent-sdk` v1.0.9
+- **npm**: `@celobank/agent-sdk` v1.1.1
 - **Downloads**: 1,629 in June 2026 (415 in the trailing week of June 14–20)
 - **License**: MIT
 - **Runtime**: TypeScript, ESM, Node ≥18
@@ -545,9 +545,8 @@ The 100/100 health score on 8004scan reflects full compliance with the required 
 The following items are planned future work. None of them are currently live.
 
 **Agent-to-Agent Commerce**
-- x402 payment enforcement at the server middleware layer (currently declared but not enforced)
-- Idempotency key enforcement (24h deduplication, currently declared but not enforced)
 - Agent registry integration for CeloBank to be discoverable by third-party agent orchestrators
+- Multi-currency x402 settlement (beyond cUSD)
 
 **Protocol Coverage**
 - Additional Mento stablecoin pairs as they launch
@@ -571,11 +570,11 @@ The following items are planned future work. None of them are currently live.
 
 ## 11. Token
 
-**CeloBank Agent has no token.**
+**No $CBA or governance token contract is deployed as of this writing.** CeloBank Agent has no token, no DAO, and no treasury today.
 
-There is no CELO-B token, no governance token, no utility token, and no tokenomics. This document does not speculate about future token launches. Any future token would be a separate governance decision and would be announced through official channels with full documentation.
+A community-token *distribution proposal* — not yet executed, no contract deployed — is documented transparently and separately in `DISTRIBUTION.md` at the repository root. That document is explicit about its own status ("Pre-launch — Token does not exist yet") and should be read as a plan under consideration, not an announcement of a live token. This whitepaper and `DISTRIBUTION.md` are kept in sync on this point: if and when a token contract is deployed, both documents will be updated together with the contract address and full tokenomics.
 
-The only tokens CeloBank Agent interacts with are existing Celo ecosystem tokens (CELO, cUSD, cEUR, and the others described in Section 4) on behalf of users.
+The only tokens CeloBank Agent interacts with today are existing Celo ecosystem tokens (CELO, cUSD, cEUR, and the others described in Section 4) on behalf of users.
 
 ---
 

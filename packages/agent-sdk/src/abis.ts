@@ -40,6 +40,19 @@ export const BROKER_ABI = [
     outputs: [{ name: "amountOut", type: "uint256" }],
     stateMutability: "nonpayable",
   },
+  {
+    name: "getAmountOut",
+    type: "function",
+    inputs: [
+      { name: "exchangeProvider", type: "address" },
+      { name: "exchangeId",       type: "bytes32"  },
+      { name: "tokenIn",          type: "address"  },
+      { name: "tokenOut",         type: "address"  },
+      { name: "amountIn",         type: "uint256"  },
+    ],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+    stateMutability: "view",
+  },
 ] as const
 
 export const AAVE_POOL_ABI = [

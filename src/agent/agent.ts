@@ -193,11 +193,15 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "send_celo",
-    description: "Prepare an unsigned transaction to send CELO to an address",
+    description: "Prepare an unsigned transaction to send CELO to an address. The connected user signs it — this never moves funds directly.",
     input_schema: {
       type: "object",
-      properties: { to: { type: "string" }, amount: { type: "string" } },
-      required: ["to", "amount"],
+      properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
+        to: { type: "string" },
+        amount: { type: "string" },
+      },
+      required: ["userAddress", "to", "amount"],
     },
   },
   {
@@ -212,27 +216,29 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "swap_celo",
-    description: "Swap CELO for a stablecoin (cUSD, cEUR, cREAL, USDC, USDT) via Mento V2",
+    description: "Prepare an unsigned transaction to swap CELO for a stablecoin (cUSD, cEUR, cREAL, USDC, USDT) via Mento V2. The connected user signs it.",
     input_schema: {
       type: "object",
       properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
         amount:   { type: "string", description: "Amount of CELO to swap" },
         tokenOut: { type: "string", description: "Target token: cUSD, cEUR, cREAL, USDC, USDT" },
       },
-      required: ["amount", "tokenOut"],
+      required: ["userAddress", "amount", "tokenOut"],
     },
   },
   {
     name: "swap_tokens",
-    description: "Swap ANY token pair on Celo mainnet. Routes CELO↔stablecoins through Mento V2, all other pairs through Uniswap V3 (0.3% fee). Supports 26+ tokens including CELO, cUSD/USDm, cEUR/EURm, cREAL/BRLm, KESm, NGNm, GHSm, XOFm, ZARm, USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC.",
+    description: "Prepare an unsigned transaction to swap ANY token pair on Celo mainnet. Routes CELO↔stablecoins through Mento V2, all other pairs through Uniswap V3 (0.3% fee). Supports 26+ tokens including CELO, cUSD/USDm, cEUR/EURm, cREAL/BRLm, KESm, NGNm, GHSm, XOFm, ZARm, USDC, USDT, WETH, WBTC, stCELO, UBE, USDGLO, EURC. The connected user signs it.",
     input_schema: {
       type: "object",
       properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
         amount:   { type: "string", description: "Amount of tokenIn to swap" },
         tokenIn:  { type: "string", description: "Source token symbol (default: CELO)" },
         tokenOut: { type: "string", description: "Destination token symbol" },
       },
-      required: ["amount", "tokenOut"],
+      required: ["userAddress", "amount", "tokenOut"],
     },
   },
   {
@@ -242,32 +248,39 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "save_cusd",
-    description: "Prepare transaction to supply cUSD or USDC to Aave V3 to earn yield (~3-5% APY)",
+    description: "Prepare an unsigned transaction to supply cUSD or USDC to Aave V3 to earn yield (~3-5% APY). The connected user signs it.",
     input_schema: {
       type: "object",
       properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
         amount: { type: "string", description: "Amount of cUSD to supply" },
         asset:  { type: "string", description: "Asset to supply: cUSD (default), USDC" },
       },
-      required: ["amount"],
+      required: ["userAddress", "amount"],
     },
   },
   {
     name: "stake_celo",
-    description: "Prepare transaction to stake CELO and earn ~4% APY via Staked CELO (stCELO). Liquid, no lockup.",
+    description: "Prepare an unsigned transaction to stake CELO and earn ~4% APY via Staked CELO (stCELO). Liquid, no lockup. The connected user signs it.",
     input_schema: {
       type: "object",
-      properties: { amount: { type: "string", description: "Amount of CELO to stake" } },
-      required: ["amount"],
+      properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
+        amount: { type: "string", description: "Amount of CELO to stake" },
+      },
+      required: ["userAddress", "amount"],
     },
   },
   {
     name: "unstake_celo",
-    description: "Prepare transaction to unstake stCELO back to CELO. ~3-day unbonding period.",
+    description: "Prepare an unsigned transaction to unstake stCELO back to CELO. ~3-day unbonding period. The connected user signs it.",
     input_schema: {
       type: "object",
-      properties: { amount: { type: "string", description: "Amount of stCELO to unstake" } },
-      required: ["amount"],
+      properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
+        amount: { type: "string", description: "Amount of stCELO to unstake" },
+      },
+      required: ["userAddress", "amount"],
     },
   },
   {
@@ -308,16 +321,16 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "launch_token",
-    description: "Prepare an unsigned transaction to deploy a new ERC20 token on Celo via TokenFactory",
+    description: "Prepare an unsigned transaction to deploy a new ERC20 token on Celo via TokenFactory. The connected user signs it.",
     input_schema: {
       type: "object",
       properties: {
         name:        { type: "string", description: "Full token name (e.g. 'My Token')" },
         symbol:      { type: "string", description: "Ticker symbol, max 11 chars (e.g. 'MTK')" },
         totalSupply: { type: "string", description: "Total token supply as a plain number (e.g. '1000000')" },
-        userAddress: { type: "string", description: "Creator wallet address" },
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (creator/signer) — always required" },
       },
-      required: ["name", "symbol", "totalSupply"],
+      required: ["name", "symbol", "totalSupply", "userAddress"],
     },
   },
   {
@@ -369,7 +382,12 @@ function extractUserAddress(message: string): string | null {
 // This makes Claude reliably pass the address to every read tool instead of omitting it
 // (which causes tools to fall back to the agent wallet).
 function buildSystemPrompt(userAddress: string | null): string {
-  if (!userAddress) return SYSTEM_PROMPT
+  if (!userAddress) {
+    return `${SYSTEM_PROMPT}
+
+## NO WALLET CONNECTED
+No user wallet is connected in this session. You may answer read-only questions (prices, market overview, bridge info, general education), but you MUST NOT call any write tool (send_celo, swap_celo, swap_tokens, save_cusd, stake_celo, unstake_celo, launch_token) — they require a connected wallet address and will fail without one. If the user asks to send/swap/save/stake/launch, tell them to connect their wallet first.`
+  }
   return `${SYSTEM_PROMPT}
 
 ## ACTIVE SESSION — USER WALLET
@@ -384,7 +402,18 @@ MANDATORY RULE — you MUST pass \`address="${userAddress}"\` to EVERY read tool
 - get_dailydrop_status → address="${userAddress}"
 - trade_ideas → address="${userAddress}"
 
-Never omit the address parameter for these tools — without it they query the wrong (agent) wallet and return wrong data.`
+Never omit the address parameter for these tools — without it they query the wrong (agent) wallet and return wrong data.
+
+MANDATORY RULE — you MUST pass \`userAddress="${userAddress}"\` to EVERY write tool (these prepare an UNSIGNED transaction for the user to sign — they never move funds themselves):
+- send_celo → userAddress="${userAddress}"
+- swap_celo → userAddress="${userAddress}"
+- swap_tokens → userAddress="${userAddress}"
+- save_cusd → userAddress="${userAddress}"
+- stake_celo → userAddress="${userAddress}"
+- unstake_celo → userAddress="${userAddress}"
+- launch_token → userAddress="${userAddress}"
+
+Never substitute any other address here, even if the user mentions one — userAddress identifies the SIGNER (whose wallet will sign the transaction and, for swap/save actions, whose account receives the output). Using the wrong address sends another wallet's funds or misdirects the result. These tools return prepared transaction data directly to the app — do not describe a transaction hash, "TX:" link, or "done" confirmation for them; the app shows that once the user actually signs.`
 }
 
 // ─── Anthropic runner ─────────────────────────────────────────────────────────
