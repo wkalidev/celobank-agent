@@ -37,3 +37,4 @@ src/ui/dist/
 skills-lock.json
 node_modules
 packages/*/node_modules
+packages/*/dist
