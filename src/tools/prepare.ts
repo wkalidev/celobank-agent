@@ -31,6 +31,15 @@ const BI_POOL_MANAGER     = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x$
 const AAVE_POOL           = "0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
 const STAKED_CELO_MANAGER = "0x0239b96D10a434a56CC9E09383077A0490cF9398" as `0x${string}`
 const STAKED_CELO_TOKEN   = "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24" as `0x${string}`
+// StakedCelo Account.sol — holds the protocol's locked CELO and is the contract that actually
+// interacts with Celo's core Election/LockedGold contracts to vote, unvote, and unlock CELO.
+// See https://docs.stcelo.xyz/contracts/account
+const STAKED_CELO_ACCOUNT = "0x4aAD04D41FD7fd495503731C5a2579e19054C432" as `0x${string}`
+// Celo core protocol contracts (unchanged by the March 2025 L2 migration — see
+// https://docs.celo.org/cel2/whats-changed/l1-l2 — Election/LockedGold kept the same addresses
+// and semantics; only the consensus layer under them changed). Source: docs.celo.org/contracts/core-contracts
+const CELO_ELECTION    = "0x8D6677192144292870907E3Fa8A5527fE55A7ff6" as `0x${string}`
+const CELO_LOCKED_GOLD = "0x6cC083Aed9e3ebe302A6336dBC7c921C9f03349E" as `0x${string}`
 const UNISWAP_V3_ROUTER   = "0x5615CDAb10dc425a742d643d949a7F474C01abc4" as `0x${string}`
 const UNISWAP_V3_QUOTER   = "0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8" as `0x${string}`
 const UNISWAP_V3_FEE      = 3000 // 0.3%
@@ -540,13 +549,246 @@ export async function prepareUnstake(
     to:          STAKED_CELO_MANAGER,
     data:        encodeFunctionData({ abi: STAKED_CELO_WITHDRAW_ABI, functionName: "withdraw", args: [amountWei] }),
     chainId:     42220,
-    description: `Unstake ${amount} stCELO → CELO (~3-day unbonding period)`,
+    description: `Schedule unstake of ${amount} stCELO (step 1 of 3)`,
   }
   return {
     success:      true,
     action:       "unstake",
     userAddress,
     transactions: [approveTx, withdrawTx],
-    summary:      `Ready to unstake ${amount} stCELO. Sign 2 transactions: (1) Approve, (2) Withdraw. CELO will be available after the ~3-day unbonding period.`,
+    summary:      `Ready to unstake ${amount} stCELO — step 1 of 3. Sign 2 transactions now: (1) Approve, (2) Schedule. ` +
+                  `This does NOT release your CELO yet — it only burns your stCELO and schedules the withdrawal. ` +
+                  `After this confirms, run "continue unstake" to start the ~3-day unbonding countdown, then "claim unstake" once it's elapsed to actually receive your CELO.`,
+  }
+}
+
+// ─── Prepare: Complete Unstake (step 2 of 3) ──────────────────────────────────
+// The StakedCelo protocol requires 3 on-chain steps to fully unstake (see
+// https://docs.stcelo.xyz/deposit-and-withdrawal-flows): (1) Manager.withdraw — burns stCELO,
+// schedules a withdrawal (prepareUnstake, above); (2) Account.withdraw — unvotes CELO from the
+// validator group(s) and starts the 3-day LockedGold unlock countdown (this function); (3)
+// Account.finishPendingWithdrawal — after the 3 days, actually transfers the CELO (prepareClaimUnstake,
+// below). All three remain fully user-signed; nothing here is done by the agent's own wallet.
+//
+// Account.withdraw() takes `lesser`/`greater` neighbor hints for Celo's on-chain sorted linked
+// list of validator groups by vote count — an incorrect hint causes Election.sol to revert the
+// call (safely — no funds move, no state is corrupted, the user just retries), so getting this
+// wrong is a reliability issue, not a fund-safety one. See findLesserAndGreater() below.
+const ELECTION_ABI = [
+  { name: "getGroupsVotedForByAccount", type: "function", stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "address[]" }] },
+  { name: "getTotalVotesForEligibleValidatorGroups", type: "function", stateMutability: "view",
+    inputs: [], outputs: [{ name: "groups", type: "address[]" }, { name: "values", type: "uint256[]" }] },
+  { name: "getTotalVotesForGroup", type: "function", stateMutability: "view",
+    inputs: [{ name: "group", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { name: "getPendingVotesForGroupByAccount", type: "function", stateMutability: "view",
+    inputs: [{ name: "group", type: "address" }, { name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { name: "getActiveVotesForGroupByAccount", type: "function", stateMutability: "view",
+    inputs: [{ name: "group", type: "address" }, { name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+] as const
+
+const STAKED_CELO_ACCOUNT_ABI = [
+  { name: "scheduledWithdrawalsForGroupAndBeneficiary", type: "function", stateMutability: "view",
+    inputs: [{ name: "group", type: "address" }, { name: "beneficiary", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { name: "withdraw", type: "function", stateMutability: "nonpayable",
+    inputs: [
+      { name: "beneficiary",               type: "address" },
+      { name: "group",                     type: "address" },
+      { name: "lesserAfterPendingRevoke",  type: "address" },
+      { name: "greaterAfterPendingRevoke", type: "address" },
+      { name: "lesserAfterActiveRevoke",   type: "address" },
+      { name: "greaterAfterActiveRevoke",  type: "address" },
+      { name: "index",                     type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }] },
+  { name: "getPendingWithdrawals", type: "function", stateMutability: "view",
+    inputs: [{ name: "beneficiary", type: "address" }], outputs: [{ name: "values", type: "uint256[]" }, { name: "timestamps", type: "uint256[]" }] },
+  { name: "finishPendingWithdrawal", type: "function", stateMutability: "nonpayable",
+    inputs: [
+      { name: "beneficiary",                    type: "address" },
+      { name: "localPendingWithdrawalIndex",    type: "uint256" },
+      { name: "lockedGoldPendingWithdrawalIndex", type: "uint256" },
+    ],
+    outputs: [{ name: "amount", type: "uint256" }] },
+] as const
+
+const LOCKED_GOLD_ABI = [
+  { name: "getPendingWithdrawals", type: "function", stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256[]" }, { name: "", type: "uint256[]" }] },
+] as const
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as `0x${string}`
+
+/**
+ * Finds the correct `lesser`/`greater` neighbor addresses for inserting `group` at
+ * `newVoteTotal` into Celo's global sorted-by-votes eligible validator group list.
+ * Required by Election.sol's revokePending/revokeActive (called internally by
+ * Account.withdraw). Wrong values cause a safe revert, not a fund-safety issue.
+ */
+async function findLesserAndGreater(
+  group: `0x${string}`,
+  newVoteTotal: bigint
+): Promise<{ lesser: `0x${string}`; greater: `0x${string}` }> {
+  const [groups, values] = await publicClient.readContract({
+    address: CELO_ELECTION,
+    abi: ELECTION_ABI,
+    functionName: "getTotalVotesForEligibleValidatorGroups",
+  }) as [readonly `0x${string}`[], readonly bigint[]]
+
+  // List is sorted descending by vote count. Walk it (skipping `group` itself, still present
+  // at its pre-revoke total) to find the two groups newVoteTotal would sit between.
+  let lesser: `0x${string}` = ZERO_ADDRESS
+  let greater: `0x${string}` = ZERO_ADDRESS
+  for (let i = 0; i < groups.length; i++) {
+    if (groups[i].toLowerCase() === group.toLowerCase()) continue
+    if (values[i] > newVoteTotal) {
+      greater = groups[i]
+    } else {
+      lesser = groups[i]
+      break
+    }
+  }
+  return { lesser, greater }
+}
+
+export async function prepareCompleteUnstake(userAddress: string): Promise<PrepareResult> {
+  const beneficiary = userAddress as `0x${string}`
+
+  const groups = await publicClient.readContract({
+    address: CELO_ELECTION,
+    abi: ELECTION_ABI,
+    functionName: "getGroupsVotedForByAccount",
+    args: [STAKED_CELO_ACCOUNT],
+  }) as readonly `0x${string}`[]
+
+  const transactions: UnsignedTx[] = []
+
+  for (let index = 0; index < groups.length; index++) {
+    const group = groups[index]
+    const revokeAmount = await publicClient.readContract({
+      address: STAKED_CELO_ACCOUNT,
+      abi: STAKED_CELO_ACCOUNT_ABI,
+      functionName: "scheduledWithdrawalsForGroupAndBeneficiary",
+      args: [group, beneficiary],
+    }) as bigint
+
+    if (revokeAmount === 0n) continue
+
+    const [pendingForGroup, groupGlobalTotal] = await Promise.all([
+      publicClient.readContract({
+        address: CELO_ELECTION, abi: ELECTION_ABI,
+        functionName: "getPendingVotesForGroupByAccount", args: [group, STAKED_CELO_ACCOUNT],
+      }) as Promise<bigint>,
+      publicClient.readContract({
+        address: CELO_ELECTION, abi: ELECTION_ABI,
+        functionName: "getTotalVotesForGroup", args: [group],
+      }) as Promise<bigint>,
+    ])
+
+    const pendingRevoke = revokeAmount < pendingForGroup ? revokeAmount : pendingForGroup
+    const activeRevoke  = revokeAmount - pendingRevoke
+
+    const afterPending = await findLesserAndGreater(group, groupGlobalTotal - pendingRevoke)
+    const afterActive  = activeRevoke > 0n
+      ? await findLesserAndGreater(group, groupGlobalTotal - revokeAmount)
+      : { lesser: ZERO_ADDRESS, greater: ZERO_ADDRESS }
+
+    transactions.push({
+      to:   STAKED_CELO_ACCOUNT,
+      data: encodeFunctionData({
+        abi: STAKED_CELO_ACCOUNT_ABI,
+        functionName: "withdraw",
+        args: [beneficiary, group, afterPending.lesser, afterPending.greater, afterActive.lesser, afterActive.greater, BigInt(index)],
+      }),
+      chainId:     42220,
+      description: `Unvote ${formatUnits(revokeAmount, 18)} CELO from validator group ${group.slice(0, 8)}… — starts 3-day unlock`,
+    })
+  }
+
+  if (transactions.length === 0) {
+    return {
+      success: false, action: "complete_unstake", userAddress, transactions: [],
+      summary: "", error: "No scheduled withdrawal found. Run \"unstake\" first, wait for it to confirm, then retry.",
+    }
+  }
+
+  return {
+    success:      true,
+    action:       "complete_unstake",
+    userAddress,
+    transactions,
+    summary:      `Step 2 of 3: sign ${transactions.length} transaction(s) to start the 3-day unbonding countdown. ` +
+                  `Once it elapses, run "claim unstake" to receive your CELO.`,
+  }
+}
+
+// ─── Prepare: Claim Unstake (step 3 of 3) ─────────────────────────────────────
+export async function prepareClaimUnstake(userAddress: string): Promise<PrepareResult> {
+  const beneficiary = userAddress as `0x${string}`
+  const now = BigInt(Math.floor(Date.now() / 1000))
+
+  const [localValues, localTimestamps] = await publicClient.readContract({
+    address: STAKED_CELO_ACCOUNT, abi: STAKED_CELO_ACCOUNT_ABI,
+    functionName: "getPendingWithdrawals", args: [beneficiary],
+  }) as [readonly bigint[], readonly bigint[]]
+
+  if (localValues.length === 0) {
+    return {
+      success: false, action: "claim_unstake", userAddress, transactions: [],
+      summary: "", error: "No pending withdrawal found. Run \"unstake\" then \"continue unstake\" first.",
+    }
+  }
+
+  const [lgValues, lgTimestamps] = await publicClient.readContract({
+    address: CELO_LOCKED_GOLD, abi: LOCKED_GOLD_ABI,
+    functionName: "getPendingWithdrawals", args: [STAKED_CELO_ACCOUNT],
+  }) as [readonly bigint[], readonly bigint[]]
+
+  const usedLgIndices = new Set<number>()
+  const transactions: UnsignedTx[] = []
+  let notReadyCount = 0
+  let earliestReadyAt = 0n
+
+  for (let i = 0; i < localValues.length; i++) {
+    if (localTimestamps[i] > now) {
+      notReadyCount++
+      if (earliestReadyAt === 0n || localTimestamps[i] < earliestReadyAt) earliestReadyAt = localTimestamps[i]
+      continue
+    }
+    const lgIndex = lgValues.findIndex((v, j) =>
+      !usedLgIndices.has(j) && v === localValues[i] && lgTimestamps[j] === localTimestamps[i]
+    )
+    if (lgIndex === -1) continue // couldn't match — skip rather than guess
+    usedLgIndices.add(lgIndex)
+
+    transactions.push({
+      to:   STAKED_CELO_ACCOUNT,
+      data: encodeFunctionData({
+        abi: STAKED_CELO_ACCOUNT_ABI,
+        functionName: "finishPendingWithdrawal",
+        args: [beneficiary, BigInt(i), BigInt(lgIndex)],
+      }),
+      chainId:     42220,
+      description: `Claim ${formatUnits(localValues[i], 18)} CELO (unlocked)`,
+    })
+  }
+
+  if (transactions.length === 0) {
+    const waitMsg = notReadyCount > 0 && earliestReadyAt > 0n
+      ? ` Still unlocking — ready at ${new Date(Number(earliestReadyAt) * 1000).toISOString()}.`
+      : ""
+    return {
+      success: false, action: "claim_unstake", userAddress, transactions: [],
+      summary: "", error: `Nothing ready to claim yet.${waitMsg}`,
+    }
+  }
+
+  return {
+    success:      true,
+    action:       "claim_unstake",
+    userAddress,
+    transactions,
+    summary:      `Step 3 of 3: sign ${transactions.length} transaction(s) to receive your unlocked CELO.` +
+                  (notReadyCount > 0 ? ` (${notReadyCount} other withdrawal(s) still unlocking.)` : ""),
   }
 }

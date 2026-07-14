@@ -12,6 +12,8 @@ import {
 import {
   stakeCeloTool,
   unstakeCeloTool,
+  continueUnstakeTool,
+  claimUnstakeTool,
   getStakingPositionTool,
   getYieldOptionsTool,
 } from "../tools/staking.js"
@@ -43,6 +45,8 @@ const tools = {
   save_cusd:            saveCUSDTool,
   stake_celo:           stakeCeloTool,
   unstake_celo:         unstakeCeloTool,
+  continue_unstake:     continueUnstakeTool,
+  claim_unstake:        claimUnstakeTool,
   get_staking_position: getStakingPositionTool,
   get_yield_options:    getYieldOptionsTool,
   trade_ideas:          tradeIdeasTool,
@@ -65,7 +69,7 @@ type ToolName = keyof typeof tools
 const DIRECT_RETURN_TOOLS = new Set<string>([
   "swap_celo", "swap_tokens", "save_cusd", "send_celo",
   "get_celo_price", "get_multi_price", "get_portfolio", "get_balance",
-  "get_aave_position", "stake_celo", "unstake_celo", "get_staking_position",
+  "get_aave_position", "stake_celo", "unstake_celo", "continue_unstake", "claim_unstake", "get_staking_position",
   "get_yield_options", "trade_ideas", "get_market_overview", "get_bridge_info",
   "get_dailydrop_status", "launch_token", "get_tokens", "get_trending_tokens",
   "check_gooddollar", "get_engagement_rewards",
@@ -273,7 +277,7 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "unstake_celo",
-    description: "Prepare an unsigned transaction to unstake stCELO back to CELO. ~3-day unbonding period. The connected user signs it.",
+    description: "Step 1 of 3 to unstake stCELO back to CELO: burns stCELO and schedules the withdrawal. Does NOT release CELO yet — after it confirms, call continue_unstake, then claim_unstake ~3 days later. The connected user signs it.",
     input_schema: {
       type: "object",
       properties: {
@@ -281,6 +285,28 @@ const anthropicTools: Anthropic.Tool[] = [
         amount: { type: "string", description: "Amount of stCELO to unstake" },
       },
       required: ["userAddress", "amount"],
+    },
+  },
+  {
+    name: "continue_unstake",
+    description: "Step 2 of 3 to unstake stCELO: starts the 3-day unbonding countdown for a previously scheduled unstake (call after unstake_celo has confirmed). The connected user signs it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
+      },
+      required: ["userAddress"],
+    },
+  },
+  {
+    name: "claim_unstake",
+    description: "Step 3 of 3 to unstake stCELO: claims the CELO once the ~3-day unbonding period has elapsed (call after continue_unstake). The connected user signs it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
+      },
+      required: ["userAddress"],
     },
   },
   {
@@ -386,7 +412,7 @@ function buildSystemPrompt(userAddress: string | null): string {
     return `${SYSTEM_PROMPT}
 
 ## NO WALLET CONNECTED
-No user wallet is connected in this session. You may answer read-only questions (prices, market overview, bridge info, general education), but you MUST NOT call any write tool (send_celo, swap_celo, swap_tokens, save_cusd, stake_celo, unstake_celo, launch_token) — they require a connected wallet address and will fail without one. If the user asks to send/swap/save/stake/launch, tell them to connect their wallet first.`
+No user wallet is connected in this session. You may answer read-only questions (prices, market overview, bridge info, general education), but you MUST NOT call any write tool (send_celo, swap_celo, swap_tokens, save_cusd, stake_celo, unstake_celo, continue_unstake, claim_unstake, launch_token) — they require a connected wallet address and will fail without one. If the user asks to send/swap/save/stake/launch, tell them to connect their wallet first.`
   }
   return `${SYSTEM_PROMPT}
 
@@ -411,7 +437,11 @@ MANDATORY RULE — you MUST pass \`userAddress="${userAddress}"\` to EVERY write
 - save_cusd → userAddress="${userAddress}"
 - stake_celo → userAddress="${userAddress}"
 - unstake_celo → userAddress="${userAddress}"
+- continue_unstake → userAddress="${userAddress}"
+- claim_unstake → userAddress="${userAddress}"
 - launch_token → userAddress="${userAddress}"
+
+Unstaking stCELO is a 3-step process across 3 separate user messages/sessions, NOT one tool call: (1) unstake_celo schedules it, (2) continue_unstake (call once step 1 confirms) starts the 3-day unbonding countdown, (3) claim_unstake (call after ~3 days) actually delivers the CELO. Never imply step 1 alone releases CELO — tell the user the next step and roughly when to run it.
 
 Never substitute any other address here, even if the user mentions one — userAddress identifies the SIGNER (whose wallet will sign the transaction and, for swap/save actions, whose account receives the output). Using the wrong address sends another wallet's funds or misdirects the result. These tools return prepared transaction data directly to the app — do not describe a transaction hash, "TX:" link, or "done" confirmation for them; the app shows that once the user actually signs.`
 }

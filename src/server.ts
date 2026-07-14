@@ -8,7 +8,7 @@ import { existsSync } from "fs"
 import { runAgent, toolRegistry } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { verifyMessage } from "viem"
-import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnstake, UNSIGNED_TX_MARKER } from "./tools/prepare.js"
+import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnstake, prepareCompleteUnstake, prepareClaimUnstake, UNSIGNED_TX_MARKER } from "./tools/prepare.js"
 import type { PrepareResult } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
@@ -140,7 +140,7 @@ const AGENT_BASE_URL   = "https://celobank-agent-production.up.railway.app"
 
 const WRITE_TOOL_NAMES = new Set([
   "send_celo", "swap_celo", "swap_tokens", "save_cusd",
-  "stake_celo", "unstake_celo", "launch_token",
+  "stake_celo", "unstake_celo", "continue_unstake", "claim_unstake", "launch_token",
 ])
 
 function paymentRequired402(toolName: string) {
@@ -358,7 +358,7 @@ This is the recommended approach — the agent never holds user funds.
       post: {
         tags: ["Prepare"],
         summary: "Prepare unsigned transactions (non-custodial)",
-        description: "Prepares DeFi transactions without signing them. Rate limited to 30 req/min.\n\n**Supported actions**: swap, supply_aave, send, stake, unstake, launch_token, get_tokens, get_trending",
+        description: "Prepares DeFi transactions without signing them. Rate limited to 30 req/min.\n\n**Supported actions**: swap, supply_aave, send, stake, unstake, continue_unstake, claim_unstake, launch_token, get_tokens, get_trending",
         requestBody: {
           required: true,
           content: {
@@ -367,7 +367,7 @@ This is the recommended approach — the agent never holds user funds.
                 type: "object",
                 required: ["action", "userAddress", "params"],
                 properties: {
-                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake", "unstake", "launch_token", "get_tokens", "get_trending"], example: "swap" },
+                  action:      { type: "string", enum: ["swap", "supply_aave", "send", "stake", "unstake", "continue_unstake", "claim_unstake", "launch_token", "get_tokens", "get_trending"], example: "swap" },
                   userAddress: { type: "string", example: "0xDEAc..." },
                   params:      { type: "object", description: "Action-specific parameters", example: { amount: "10", tokenOut: "cUSD" } },
                 },
@@ -604,6 +604,14 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         result = await prepareUnstake(userAddress, params.amount)
         break
 
+      case "continue_unstake":
+        result = await prepareCompleteUnstake(userAddress)
+        break
+
+      case "claim_unstake":
+        result = await prepareClaimUnstake(userAddress)
+        break
+
       case "launch_token":
         result = await prepareLaunchToken(userAddress, params.name, params.symbol, params.totalSupply)
         break
@@ -615,7 +623,7 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         return res.json({ result: await getTokens() })
 
       default:
-        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, unstake, launch_token, get_tokens, get_trending` })
+        return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, unstake, continue_unstake, claim_unstake, launch_token, get_tokens, get_trending` })
     }
 
     console.log(`✅ [prepare] ${action} — ${result.transactions.length} TX(s)`)
@@ -787,7 +795,9 @@ const MCP_TOOLS = [
   { name: "save_cusd",            description: "Supply cUSD/USDC to Aave V3 to earn yield" },
   { name: "get_aave_position",    description: "Get Aave V3 lending position" },
   { name: "stake_celo",           description: "Stake CELO to earn ~4% APY via stCELO" },
-  { name: "unstake_celo",         description: "Unstake stCELO back to CELO" },
+  { name: "unstake_celo",         description: "Unstake stCELO back to CELO (step 1 of 3 — schedules the withdrawal)" },
+  { name: "continue_unstake",     description: "Step 2 of 3: starts the 3-day unlock countdown for a scheduled unstake" },
+  { name: "claim_unstake",        description: "Step 3 of 3: claims CELO once the 3-day unbonding period has elapsed" },
   { name: "get_staking_position", description: "Get CELO/stCELO staking position" },
   { name: "get_yield_options",    description: "Get all yield options on Celo with APY and risk" },
   { name: "trade_ideas",          description: "Portfolio analysis and personalized DeFi recommendations" },
@@ -880,6 +890,20 @@ const TOOL_SCHEMAS: Record<string, object> = {
     properties: {
       userAddress: { type: "string", description: "Signer wallet address (0x...)" },
       amount:      { type: "string", description: "Amount of stCELO to unstake" },
+    },
+  },
+  continue_unstake: {
+    type: "object",
+    required: ["userAddress"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
+    },
+  },
+  claim_unstake: {
+    type: "object",
+    required: ["userAddress"],
+    properties: {
+      userAddress: { type: "string", description: "Signer wallet address (0x...)" },
     },
   },
   launch_token: {
@@ -1021,6 +1045,14 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
           case "unstake_celo":
             if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
             result = await prepareUnstake(userAddress, toolArgs.amount)
+            break
+
+          case "continue_unstake":
+            result = await prepareCompleteUnstake(userAddress)
+            break
+
+          case "claim_unstake":
+            result = await prepareClaimUnstake(userAddress)
             break
 
           case "launch_token":
@@ -1215,7 +1247,9 @@ app.get("/catalog", (_, res) => {
       paid("swap_tokens",  "Swap Tokens",        "Universal swap: any token pair on Celo via Mento V2 or Uniswap V3 (26+ tokens supported)",           { amount: "string (required)", tokenIn: "string? (default: CELO)", tokenOut: "string (required)" }),
       paid("save_cusd",    "Save (Aave Supply)", "Supply cUSD or USDC to Aave V3 to earn yield (~3–5% APY)",                                           { amount: "string (required)", asset: "string? ('cUSD' | 'USDC', default: cUSD)" }),
       paid("stake_celo",   "Stake CELO",         "Stake CELO to earn ~4% APY as stCELO (liquid staking, no lockup)",                                   { amount: "string (CELO to stake, required)" }),
-      paid("unstake_celo", "Unstake CELO",       "Unstake stCELO back to CELO (~3-day unbonding period)",                                              { amount: "string (stCELO to unstake, required)" }),
+      paid("unstake_celo", "Unstake CELO",       "Step 1 of 3: schedule unstake of stCELO back to CELO (does not release funds yet)",                  { amount: "string (stCELO to unstake, required)" }),
+      paid("continue_unstake", "Continue Unstake", "Step 2 of 3: start the 3-day unlock countdown for a previously scheduled unstake",                  { userAddress: "string (0x..., required)" }),
+      paid("claim_unstake", "Claim Unstake",     "Step 3 of 3: claim CELO once the 3-day unbonding period has elapsed",                                { userAddress: "string (0x..., required)" }),
       paid("launch_token", "Launch Token",       "Deploy a new ERC-20 token on Celo via CeloBank Token Factory",                                       { name: "string (required)", symbol: "string (max 11 chars, required)", totalSupply: "string (number, required)" }),
     ],
   })

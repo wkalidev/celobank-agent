@@ -8,7 +8,7 @@ import { privateKeyToAccount } from "viem/accounts"
 import { defineChain } from "viem"
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
-import { prepareStake, prepareUnstake, UNSIGNED_TX_MARKER } from "./prepare.js"
+import { prepareStake, prepareUnstake, prepareCompleteUnstake, prepareClaimUnstake, UNSIGNED_TX_MARKER } from "./prepare.js"
 
 // ─── Chain ────────────────────────────────────────────────────────────────────
 const celo = defineChain({
@@ -137,6 +137,47 @@ export const unstakeCeloTool = tool(
     schema: z.object({
       userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
       amount: z.string().describe("Amount of stCELO to unstake"),
+    }),
+  }
+)
+
+// ─── Tool: Continue Unstake — step 2 of 3 (non-custodial) ─────────────────────
+// StakedCelo requires 3 steps to fully unstake; unstake_celo above only does step 1
+// (schedules the withdrawal). This step unvotes the CELO from validator groups and
+// starts the 3-day unlock countdown. Still fully user-signed — no agent involvement.
+export const continueUnstakeTool = tool(
+  async ({ userAddress }: { userAddress: string }) => {
+    try {
+      const result = await prepareCompleteUnstake(userAddress)
+      return UNSIGNED_TX_MARKER + JSON.stringify(result)
+    } catch (e: unknown) {
+      return `❌ Continue unstake failed: ${e instanceof Error ? e.message : String(e)}`
+    }
+  },
+  {
+    name: "continue_unstake",
+    description: "Step 2 of 3 for unstaking stCELO: starts the 3-day unlock countdown for a previously scheduled unstake. Run after unstake_celo has confirmed. The connected user signs it.",
+    schema: z.object({
+      userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
+    }),
+  }
+)
+
+// ─── Tool: Claim Unstake — step 3 of 3 (non-custodial) ────────────────────────
+export const claimUnstakeTool = tool(
+  async ({ userAddress }: { userAddress: string }) => {
+    try {
+      const result = await prepareClaimUnstake(userAddress)
+      return UNSIGNED_TX_MARKER + JSON.stringify(result)
+    } catch (e: unknown) {
+      return `❌ Claim unstake failed: ${e instanceof Error ? e.message : String(e)}`
+    }
+  },
+  {
+    name: "claim_unstake",
+    description: "Step 3 of 3 for unstaking stCELO: claims the CELO once the ~3-day unbonding period has elapsed. Run after continue_unstake and waiting 3 days. The connected user signs it.",
+    schema: z.object({
+      userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
     }),
   }
 )

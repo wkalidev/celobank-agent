@@ -155,6 +155,13 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
   if (saveMatch) return { action: "supply_aave", params: { amount: saveMatch[1], asset: (saveMatch[2] || "cUSD").toUpperCase() } }
   const sendMatch = m.match(/(?:send|envoie|envoyer|transfer)\s+([\d.]+)\s+celo\s+(?:to|à|a)\s+(0x[a-f0-9]{40})/i)
   if (sendMatch) return { action: "send", params: { amount: sendMatch[1], to: sendMatch[2] } }
+  // Unstaking is a 3-step process (Manager.withdraw → Account.withdraw → finishPendingWithdrawal).
+  // These two phrases must be checked BEFORE the generic unstakeMatch below, since they contain
+  // "unstake" as a substring and take no numeric amount (they act on whatever is already pending).
+  const continueUnstakeMatch = /(?:continue unstake|continuer.{0,3}unstake|continuer.{0,3}désengagement|finaliser.{0,3}unstake|complete unstake|step 2|étape 2)/i.test(m)
+  if (continueUnstakeMatch) return { action: "continue_unstake", params: {} }
+  const claimUnstakeMatch = /(?:claim unstake|réclamer.{0,3}unstake|claim celo|récupérer.{0,3}celo|step 3|étape 3)/i.test(m)
+  if (claimUnstakeMatch) return { action: "claim_unstake", params: {} }
   const unstakeMatch = m.match(/(?:unstake|un-stake|withdraw stcelo|désengager|retirer)\s+([\d.]+)/i)
   if (unstakeMatch) return { action: "unstake", params: { amount: unstakeMatch[1] } }
   const stakeMatch = m.match(/(?:stake|staker|staking)\s+([\d.]+)/i)
@@ -801,6 +808,16 @@ export default function App() {
         }
         const result = await executePrepared(prepared)
         setMessages(prev => [...prev, { role: "agent", content: result, timestamp: new Date() }])
+
+        // Unstaking is a 3-step process — nudge the user toward the next step once
+        // the current one confirms, so CELO never gets stuck in limbo unnoticed.
+        if (!result.startsWith("❌")) {
+          if (defiAction.action === "unstake") {
+            setMessages(prev => [...prev, { role: "agent", content: `> Step 1 of 3 done. Say "continue unstake" to start the 3-day unlock countdown.`, timestamp: new Date() }])
+          } else if (defiAction.action === "continue_unstake") {
+            setMessages(prev => [...prev, { role: "agent", content: `> Step 2 of 3 done. Wait ~3 days, then say "claim unstake" to receive your CELO.`, timestamp: new Date() }])
+          }
+        }
       } else {
         const res = await fetch(`${API_URL}/api/v1/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }) })
         const data = await res.json()
