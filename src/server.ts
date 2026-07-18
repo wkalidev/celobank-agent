@@ -786,10 +786,9 @@ app.get("/health", (_, res) => res.json({
   agent:   "CeloBank Agent API v2.0.0",
   wallet:  `${AGENT_ADDRESS.slice(0, 6)}...${AGENT_ADDRESS.slice(-4)}`,
   network: "Celo Mainnet (Chain ID: 42220)",
-  // NOTE: keep in sync with the *actually-published* npm version, not the repo's
-  // package.json — packages/agent-sdk is at 1.2.0 in source but requires a manual
-  // `npm publish` (maintainer credentials) to go live. Bump this once published.
-  sdk:     "@celobank/agent-sdk@1.1.1",
+  // NOTE: keep in sync with the *actually-published* npm version, not just the
+  // repo's package.json. Published 2026-07-18 — see CHANGELOG.md.
+  sdk:     "@celobank/agent-sdk@1.2.0",
   mode:    "non-custodial (v2)",
   tools:   24,
   docs:    "/docs",

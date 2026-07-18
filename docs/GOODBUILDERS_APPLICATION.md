@@ -125,7 +125,7 @@ Measured via Neynar webhook analytics (cast mentions triggering bot replies) + V
 - Built and shipped CeloBank Agent end-to-end: TypeScript/React frontend, Express.js API, 21 DeFi tools across Mento V2, Aave V3, stCELO, Uniswap V3, Token Factory, GoodDollar EngagementRewards
 - Integrated ERC-8004 on-chain identity (agent #9225, 100/100 on 8004scan), Self Protocol agent SDK, MCP, A2A AgentCard, x402 machine-readable catalog
 - Deployed on Vercel + Railway, live on Celo Mainnet
-- Published `@celobank/agent-sdk` v1.1.1 on npm
+- Published `@celobank/agent-sdk` v1.2.0 on npm
 - Active Celo community contributor; building for real users in Africa and LatAm from day one
 
 ---

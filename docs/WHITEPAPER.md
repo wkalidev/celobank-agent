@@ -10,7 +10,7 @@
 
 CeloBank Agent addresses the interface problem directly. It is a non-custodial, conversational DeFi agent deployed on Celo Mainnet (Chain ID 42220) that exposes 21 on-chain tools — swapping, lending, staking, token launch, yield discovery, and more — through natural language in 19 languages. Users sign every transaction with their own wallet; the agent never holds funds or private keys.
 
-CeloBank Agent is also an open platform. The `@celobank/agent-sdk` npm package (v1.1.1) lets any developer build their own autonomous DeFi agent on Celo in minutes. A machine-readable `/catalog` endpoint — implementing the x402-catalog/1.0 schema — enables autonomous agent-to-agent commerce: any AI agent can discover, price, and call CeloBank tools programmatically without human mediation.
+CeloBank Agent is also an open platform. The `@celobank/agent-sdk` npm package (v1.2.0) lets any developer build their own autonomous DeFi agent on Celo in minutes. A machine-readable `/catalog` endpoint — implementing the x402-catalog/1.0 schema — enables autonomous agent-to-agent commerce: any AI agent can discover, price, and call CeloBank tools programmatically without human mediation.
 
 This document describes the system's architecture, protocol integrations, security model, and on-chain identity as they exist today. Planned future work is clearly labeled as **Roadmap**.
 
@@ -84,7 +84,7 @@ CeloBank Agent is two things simultaneously:
 | Custody model | Non-custodial — user signs all transactions |
 | AI primary | Anthropic Claude Sonnet 4.6 |
 | AI fallback | Groq LLaMA 3.3-70b |
-| SDK | `@celobank/agent-sdk` v1.1.1 |
+| SDK | `@celobank/agent-sdk` v1.2.0 |
 | On-chain identity | ERC-8004 agent #9225 |
 | Token | None |
 
@@ -412,7 +412,7 @@ Additional AgentCard fields:
 npm install @celobank/agent-sdk
 ```
 
-- **npm**: `@celobank/agent-sdk` v1.1.1
+- **npm**: `@celobank/agent-sdk` v1.2.0
 - **Downloads**: 1,629 in June 2026 (415 in the trailing week of June 14–20)
 - **License**: MIT
 - **Runtime**: TypeScript, ESM, Node ≥18
