@@ -324,19 +324,43 @@ export class CeloBankSDK {
   }
 
   /**
-   * Envoyer du CELO natif
+   * Envoyer du CELO natif ou n'importe quel token ERC20 enregistré (cUSD, cEUR, USDC, ...)
+   * `params.token` défaut à "CELO". Avant ce correctif, cette méthode n'envoyait
+   * jamais que du CELO natif, quel que soit le token demandé.
    */
   async send(params: SendParams): Promise<SendResult> {
-    const txHash = await this.walletClient.sendTransaction({
-      account: this.account,
-      chain:   celoMainnet,
-      to:      params.to as `0x${string}`,
-      value:   parseEther(params.amount),
+    const tokenSymbol = params.token ?? "CELO"
+    const token = findToken(tokenSymbol)
+    if (!token) throw new Error(`Token "${tokenSymbol}" non supporté`)
+
+    if (token.sym === "CELO") {
+      const txHash = await this.walletClient.sendTransaction({
+        account: this.account,
+        chain:   celoMainnet,
+        to:      params.to as `0x${string}`,
+        value:   parseEther(params.amount),
+      })
+      return {
+        success:     true,
+        to:          params.to,
+        amount:      params.amount,
+        token:       "CELO",
+        txHash,
+        explorerUrl: `https://celoscan.io/tx/${txHash}`,
+      }
+    }
+
+    const amountWei = parseUnits(params.amount, token.decimals)
+    const txHash = await this.walletClient.writeContract({
+      account: this.account, chain: celoMainnet,
+      address: token.address, abi: ERC20_ABI,
+      functionName: "transfer", args: [params.to as `0x${string}`, amountWei],
     })
     return {
       success:     true,
       to:          params.to,
       amount:      params.amount,
+      token:       token.sym,
       txHash,
       explorerUrl: `https://celoscan.io/tx/${txHash}`,
     }

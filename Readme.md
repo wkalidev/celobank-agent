@@ -82,7 +82,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 |--------|-------------|
 | `getPortfolio(params?)` | Native CELO + all ERC20 balances for any address |
 | `getPrices(params?)` | Real-time USD prices + 24h change via CoinGecko |
-| `send(params)` | Send native CELO to any address |
+| `send(params)` | Send CELO or any registered token (cUSD, cEUR, USDC, ...) to any address — defaults to CELO |
 | `swap(params)` | Swap CELO → stablecoin via Mento V2 (legacy) |
 | `swapTokens(params)` | Universal swap: Mento V2 or Uniswap V3 for 26+ token pairs |
 | `launchToken(params)` | Deploy a new ERC20 token on Celo via TokenFactory |
@@ -94,7 +94,7 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 
 ---
 
-## ✨ Features (v2 — 21 tools)
+## ✨ Features (v2 — 24 tools)
 
 | Feature | Description |
 |---------|-------------|
@@ -177,12 +177,12 @@ GROQ_API_KEY=gsk_...              # Optional fallback if ANTHROPIC_API_KEY not s
 
 ### POST /mcp — Model Context Protocol
 
-CeloBank Agent exposes a full MCP server at `POST /mcp`. Agents and AI clients can call all 21 tools directly over JSON-RPC.
+CeloBank Agent exposes a full MCP server at `POST /mcp`. Agents and AI clients can call all 24 tools directly over JSON-RPC.
 
-**Free read tools (14)**: `get_portfolio`, `get_prices`, `get_aave_position`, `get_tokens`, `get_trending_tokens`, `get_market_overview`, `get_trade_ideas`, `get_bridge_info`, `get_streak`, `check_gooddollar`, `get_engagement_rewards`, `get_catalog`, `get_yield_options`, `get_token_info`
+**Free read tools (15)**: `get_balance`, `get_portfolio`, `get_celo_price`, `get_multi_price`, `get_aave_position`, `get_staking_position`, `get_yield_options`, `trade_ideas`, `get_market_overview`, `get_bridge_info`, `get_dailydrop_status`, `get_tokens`, `get_trending_tokens`, `check_gooddollar`, `get_engagement_rewards`
 
-**Paid write tools (7)** — require `X-PAYMENT` header (0.001 cUSD on Celo Mainnet via x402):
-`send_celo`, `swap_tokens`, `supply_aave`, `borrow_aave`, `repay_aave`, `launch_token`, `check_in`
+**Paid write tools (9)** — require `X-PAYMENT` header (0.001 cUSD on Celo Mainnet via x402):
+`send_celo`, `swap_celo`, `swap_tokens`, `save_cusd`, `stake_celo`, `unstake_celo`, `continue_unstake`, `claim_unstake`, `launch_token`
 
 ```bash
 # Free read tool — no payment needed
@@ -277,7 +277,7 @@ POST /api/v1/prepare
 |--------|-----------------|-------------|
 | `swap` | `amount`, `tokenOut`, `tokenIn?` | Swap any token pair — Mento V2 or Uniswap V3 routing |
 | `supply_aave` | `amount`, `asset?` | Deposit to Aave V3 |
-| `send` | `to`, `amount` | Send CELO to an address |
+| `send` | `to`, `amount`, `token?` | Send CELO or any registered token (cUSD, cEUR, USDC, ...) to an address — defaults to CELO |
 | `stake` | `amount` | Stake CELO → stCELO |
 | `launch_token` | `name`, `symbol`, `totalSupply` | Deploy a new ERC20 token on Celo |
 | `get_tokens` | _(none)_ | List all tokens launched via the factory |
@@ -336,7 +336,7 @@ User (any language, any device)
   └── POST /api/v1/prepare → unsigned TX builder
        ↓
   AI Agent (Anthropic Claude Sonnet 4.6)
-  └── 21 tools across 5 files:
+  └── 24 tools across 7 files:
       ├── tools/celo.ts        → balance, send, price
       ├── tools/defi.ts        → swap, Aave
       ├── tools/staking.ts     → stCELO stake/unstake, yield options
@@ -445,7 +445,7 @@ CeloBank Agent is participating in **[GoodBuilders Season 4](https://celobuilder
 | **Input validation** | All POST bodies validated (type, length, format); addresses and amounts checked before any blockchain call |
 | **x402 enforcement** | Write tools on `/mcp` require a verified on-chain payment before execution |
 | **Error sanitization** | Tool errors logged server-side; clients receive generic messages — no internal stack traces or API keys leaked |
-| **Supabase RLS** | `agent_actions` — service-role only (deny all for anon/authenticated). `agent_stats` — public SELECT, writes service-role only |
+| **Supabase RLS** | Migration `supabase/migrations/20260630_rls_policies.sql` defines `agent_actions` (service-role only) and `agent_stats` (public SELECT, writes service-role only). ⚠️ Not yet wired into the running server — no code path currently reads or writes these tables. Policies are ready to activate once logging is implemented. |
 | **No SQL** | All blockchain interaction via viem — no SQL queries, no SQL injection surface |
 | **Secrets** | All credentials in `.env` (gitignored); no hardcoded keys in source |
 | **Headers** | `X-Powered-By` removed; `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` set |

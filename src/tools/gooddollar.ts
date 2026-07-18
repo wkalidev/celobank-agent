@@ -1,11 +1,22 @@
 import "dotenv/config"
 import { formatUnits } from "viem"
+import { privateKeyToAccount } from "viem/accounts"
 import { publicClient } from "./prepare.js"
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
 const G_DOLLAR           = "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A" as `0x${string}`
 const ENGAGEMENT_REWARDS = "0x25db74CF4E7BA120526fd87e159CF656d94bAE43" as `0x${string}`
 const IDENTITY_V4        = "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42" as `0x${string}`
+
+// Real CeloBank agent address, derived the same way as every other tool module
+// (server.ts's AGENT_ADDRESS, celo.ts/defi.ts/staking.ts's `account.address`).
+// Previously this fell back to process.env.AGENT_ADDRESS, a variable that does
+// not exist anywhere in .env/.env.example — so get_engagement_rewards called
+// without an explicit address (the README's own example) silently queried the
+// zero address and always returned zeros instead of CeloBank's real stats.
+const rawKey = process.env.PRIVATE_KEY!.trim()
+const privateKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`
+const agentAccount = privateKeyToAccount(privateKey as `0x${string}`)
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 const ERC20_ABI = [
@@ -95,8 +106,7 @@ ${verified
 // ─── getEngagementRewards ─────────────────────────────────────────────────────
 async function getEngagementRewards(appAddress?: string): Promise<string> {
   const appAddr = (
-    appAddress ?? process.env.CELOBANK_APP_ADDRESS ?? process.env.AGENT_ADDRESS
-    ?? "0x0000000000000000000000000000000000000000"
+    appAddress ?? process.env.CELOBANK_APP_ADDRESS ?? agentAccount.address
   ) as `0x${string}`
 
   try {

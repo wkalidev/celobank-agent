@@ -481,24 +481,64 @@ export async function prepareSupplyAave(
   }
 }
 
-// ─── Prepare: Send CELO ───────────────────────────────────────────────────────
+// ─── Prepare: Send CELO or any ERC20 token ────────────────────────────────────
+// `token` defaults to "CELO" (native transfer) for backward compatibility. Any
+// other registered symbol (cUSD, cEUR, USDC, ...) is sent via ERC20 transfer().
+// Previously this only ever supported native CELO, even though the app's own
+// advertised example ("envoie 5 cUSD à mon ami") implies stablecoin sends — a
+// request for "5 cUSD" silently sent 5 CELO instead (wrong asset, wrong value).
+const ERC20_TRANSFER_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    inputs: [
+      { name: "to",     type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
+] as const
+
 export async function prepareSend(
   userAddress: string,
   to: string,
-  amount: string
+  amount: string,
+  token: string = "CELO"
 ): Promise<PrepareResult> {
+  const tok = findToken(token)
+  if (!tok) {
+    return { success: false, action: "send", userAddress, transactions: [], summary: "", error: `Token "${token}" not supported` }
+  }
+
+  if (tok.sym === "CELO") {
+    return {
+      success:      true,
+      action:       "send",
+      userAddress,
+      transactions: [{
+        to:          to as `0x${string}`,
+        data:        "0x",
+        value:       parseEther(amount).toString(),
+        chainId:     42220,
+        description: `Send ${amount} CELO to ${to.slice(0, 8)}...`,
+      }],
+      summary: `Ready to send ${amount} CELO to ${to}. Sign 1 transaction.`,
+    }
+  }
+
+  const amountWei = parseUnits(amount, tok.decimals)
   return {
     success:      true,
     action:       "send",
     userAddress,
     transactions: [{
-      to:          to as `0x${string}`,
-      data:        "0x",
-      value:       parseEther(amount).toString(),
+      to:          tok.address,
+      data:        encodeFunctionData({ abi: ERC20_TRANSFER_ABI, functionName: "transfer", args: [to as `0x${string}`, amountWei] }),
       chainId:     42220,
-      description: `Send ${amount} CELO to ${to.slice(0, 8)}...`,
+      description: `Send ${amount} ${tok.sym} to ${to.slice(0, 8)}...`,
     }],
-    summary: `Ready to send ${amount} CELO to ${to}. Sign 1 transaction.`,
+    summary: `Ready to send ${amount} ${tok.sym} to ${to}. Sign 1 transaction.`,
   }
 }
 

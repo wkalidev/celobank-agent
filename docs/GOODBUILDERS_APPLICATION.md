@@ -65,7 +65,7 @@ G$ is a first-class token in CeloBank — not bolted on. It appears in every por
 
 | Metric | Value | Source |
 |---|---|---|
-| **Tools** | 21 live on-chain tools | `src/server.ts:574` (`tools: 21`) |
+| **Tools** | 24 live on-chain tools | `src/server.ts` (`tools: 24`) |
 | **Languages supported** | 19 | `src/server.ts:118–138` (19 `langInstructions` entries) |
 | **SDK downloads** | 1,629 in June 2026 (`@celobank/agent-sdk`) | npm / WHITEPAPER.md |
 | **ERC-8004 score** | 100/100 on 8004scan | WHITEPAPER.md §9.1 |
@@ -73,7 +73,7 @@ G$ is a first-class token in CeloBank — not bolted on. It appears in every por
 | **Self Protocol status** | SDK integrated (`@selfxyz/agent-sdk` v0.2.1), linked-mode registration endpoint live at `POST /api/self-agent-register` | `src/lib/self-agent-id.ts` |
 | **Farcaster Mini App** | Live at `celobank-agent.vercel.app`, Neynar webhook active, `@celobank` bot replies on-mention with full agent context + user's verified wallet | `src/bot/farcaster-bot.ts`, `src/ui/public/.well-known/farcaster.json` |
 | **MiniPay** | Auto-detects and auto-connects MiniPay wallet (no manual step) | `src/ui/main.tsx` + whitepaper §5.1 |
-| **x402 catalog** | Machine-readable `GET /catalog` (x402-catalog/1.0 schema) with 21 tools, pricing, and payment schema | `src/server.ts:659–786` |
+| **x402 catalog** | Machine-readable `GET /catalog` (x402-catalog/1.0 schema) with 24 tools, pricing, and payment schema | `src/server.ts` |
 | **MCP endpoint** | `POST /mcp` (protocol `2024-11-05`) | `src/server.ts:656` |
 | **A2A AgentCard** | `GET /.well-known/agent-card.json` (v0.3.0, 8 skills) | `src/server.ts:789` |
 | **On-chain identity** | Agent contract `0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1`, Token Factory `0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e` | WHITEPAPER.md §9.2 |

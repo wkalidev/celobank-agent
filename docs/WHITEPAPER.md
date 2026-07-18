@@ -169,7 +169,7 @@ Language detection runs server-side in `src/server.ts` via a `detectLanguage()` 
 
 ### 3.4 Tool Architecture
 
-21 tools are exposed to the AI via the Anthropic tool schema (`anthropicTools` in `src/agent/agent.ts`), organized across six source modules:
+24 tools are exposed to the AI via the Anthropic tool schema (`anthropicTools` in `src/agent/agent.ts`), organized across seven source modules:
 
 | Module | Tools exposed to model |
 |--------|------------------------|
@@ -316,7 +316,7 @@ The catalog includes:
 
 - **Service identity**: `id`, `name`, `version`, `baseUrl`, `entrypoint`, `network`, `chainId`
 - **Live health**: `service.health.status` ("operational") and `service.health.uptime` (live `process.uptime()` in seconds)
-- **Tool list**: all 21 tools with input schemas, descriptions, categories (`read`/`write`), and per-tool pricing
+- **Tool list**: all 24 tools with input schemas, descriptions, categories (`read`/`write`), and per-tool pricing
 - **Pricing**: read tools are free; write tools are priced at 0.001 cUSD per call via the x402 payment protocol
 - **Idempotency contract**: `Idempotency-Key` header behavior (24h safe-retry window)
 - **Advisory spend limits**: 100 cUSD per call, 1,000 cUSD per day
@@ -516,7 +516,7 @@ CeloBank Agent also deploys its own agent contract at [`0x4ebef67f7a20485ccc9e66
 
 The registration metadata was generated via `scripts/gen-metadata-uri.ts` and committed on-chain. The metadata URI encodes a JSON object conforming to the ERC-8004 `registration-v1` schema and declares three services:
 
-- **MCP** — `POST /mcp`, protocol version `2024-11-05`, 21 tools listed ✅ verified on 8004scan
+- **MCP** — `POST /mcp`, protocol version `2024-11-05`, 24 tools listed ✅ verified on 8004scan
 - **A2A** — `GET /.well-known/agent-card.json`, AgentCard 0.3.0, 8 skills ✅ verified on 8004scan
 - **OASF** — Open Agent Skills Framework classification (4 skills, 6 domains using confirmed `github.com/agntcy/oasf` taxonomy paths) — declared in metadata, 8004scan OASF wizard validation pending
 

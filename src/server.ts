@@ -437,7 +437,7 @@ This is the recommended approach — the agent never holds user funds.
       get: {
         tags: ["System"],
         summary: "x402 machine-readable service catalog",
-        description: "Lists all 21 tools with pricing, payment schema, and x402 facilitator details.",
+        description: "Lists all 24 tools with pricing, payment schema, and x402 facilitator details.",
         responses: { 200: { description: "x402 catalog" } },
       },
     },
@@ -593,7 +593,7 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         break
 
       case "send":
-        result = await prepareSend(userAddress, params.to, params.amount)
+        result = await prepareSend(userAddress, params.to, params.amount, params.token ?? "CELO")
         break
 
       case "stake":
@@ -730,17 +730,27 @@ app.get("/api/self-agent-status", externalReadLimit, async (_req, res) => {
   }
 })
 
-const SELF_REGISTER_MESSAGE = "CeloBank Agent: Initiate Self Agent ID Registration"
+const SELF_REGISTER_MESSAGE_PREFIX = "CeloBank Agent: Initiate Self Agent ID Registration"
+const SELF_REGISTER_WINDOW_MS = 5 * 60 * 1000 // 5 minutes
 
 // ─── POST /api/self-agent-register (owner-only) ────────────────────────────
 app.post("/api/self-agent-register", prepareLimit, async (req, res) => {
-  const { ownerAddress, signature } = req.body
+  const { ownerAddress, signature, timestamp } = req.body
 
   if (!isValidAddress(ownerAddress)) {
     return res.status(400).json({ error: "ownerAddress must be a valid Ethereum address" })
   }
   if (!signature || typeof signature !== "string") {
     return res.status(400).json({ error: "signature is required" })
+  }
+  // Timestamp binds the signed message to a short validity window so a captured
+  // signature can't be replayed indefinitely (the message itself was previously
+  // static text with no nonce/expiry).
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return res.status(400).json({ error: "timestamp is required" })
+  }
+  if (Math.abs(Date.now() - timestamp) > SELF_REGISTER_WINDOW_MS) {
+    return res.status(400).json({ error: "Request expired — please sign again" })
   }
 
   const ownerRef = process.env.SELF_AGENT_OWNER_ADDRESS || AGENT_ADDRESS
@@ -751,7 +761,7 @@ app.post("/api/self-agent-register", prepareLimit, async (req, res) => {
   try {
     const valid = await verifyMessage({
       address: ownerAddress as `0x${string}`,
-      message: SELF_REGISTER_MESSAGE,
+      message: `${SELF_REGISTER_MESSAGE_PREFIX}\nTimestamp: ${timestamp}`,
       signature: signature as `0x${string}`,
     })
     if (!valid) {
@@ -776,9 +786,12 @@ app.get("/health", (_, res) => res.json({
   agent:   "CeloBank Agent API v2.0.0",
   wallet:  `${AGENT_ADDRESS.slice(0, 6)}...${AGENT_ADDRESS.slice(-4)}`,
   network: "Celo Mainnet (Chain ID: 42220)",
+  // NOTE: keep in sync with the *actually-published* npm version, not the repo's
+  // package.json — packages/agent-sdk is at 1.2.0 in source but requires a manual
+  // `npm publish` (maintainer credentials) to go live. Bump this once published.
   sdk:     "@celobank/agent-sdk@1.1.1",
   mode:    "non-custodial (v2)",
-  tools:   21,
+  tools:   24,
   docs:    "/docs",
   uptime:  Math.floor(process.uptime()),
 }))
@@ -789,7 +802,7 @@ const MCP_TOOLS = [
   { name: "get_portfolio",        description: "Get full portfolio: CELO + all token balances" },
   { name: "get_celo_price",       description: "Get real-time CELO and token prices" },
   { name: "get_multi_price",      description: "Get prices for multiple tokens with 24h change" },
-  { name: "send_celo",            description: "Send CELO to an address" },
+  { name: "send_celo",            description: "Send CELO or any registered ERC20 token (cUSD, cEUR, USDC, ...) to an address" },
   { name: "swap_celo",            description: "Swap CELO for a stablecoin via Mento V2" },
   { name: "swap_tokens",          description: "Universal swap: any token pair via Mento V2 or Uniswap V3" },
   { name: "save_cusd",            description: "Supply cUSD/USDC to Aave V3 to earn yield" },
@@ -806,6 +819,7 @@ const MCP_TOOLS = [
   { name: "get_dailydrop_status", description: "Check DailyDrop streak and Proof of Presence badge" },
   { name: "launch_token",         description: "Deploy a new ERC20 token on Celo via TokenFactory" },
   { name: "get_tokens",           description: "List all tokens launched via CeloBank TokenFactory" },
+  { name: "get_trending_tokens",  description: "Get the 5 most recently launched tokens on CeloBank Token Factory" },
   { name: "check_gooddollar",        description: "Check G$ balance and GoodDollar human verification status for an address" },
   { name: "get_engagement_rewards",  description: "Show CeloBank's GoodDollar engagement reward stats (G$ distributed, users onboarded)" },
 ]
@@ -814,7 +828,7 @@ const MCP_TOOLS = [
 const MCP_INFO = {
   name:        "CeloBank Agent",
   version:     "2.0.0",
-  description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 21 tools. x402 micropayments (0.001 cUSD/write). ERC-8004 compliant.",
+  description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 24 tools. x402 micropayments (0.001 cUSD/write). ERC-8004 compliant.",
   tools:       MCP_TOOLS.map(t => t.name),
   status:      "healthy",
   endpoint:    "https://celobank-agent-production.up.railway.app/mcp",
@@ -845,7 +859,8 @@ const TOOL_SCHEMAS: Record<string, object> = {
     properties: {
       userAddress: { type: "string", description: "Signer wallet address (0x...)" },
       to:          { type: "string", description: "Recipient address (0x...)" },
-      amount:      { type: "string", description: "Amount of CELO to send" },
+      amount:      { type: "string", description: "Amount to send" },
+      token:       { type: "string", description: "Token symbol to send (default: CELO). Any registered token — cUSD, cEUR, USDC, etc. — is sent via ERC20 transfer." },
     },
   },
   swap_celo: {
@@ -1022,7 +1037,7 @@ async function handleMcpRpc(req: any, res: any): Promise<void> {
           case "send_celo":
             if (!isValidAddress(toolArgs.to))         { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.to must be a valid address" } }); return }
             if (!isValidAmount(toolArgs.amount))       { res.json({ jsonrpc: "2.0", id, error: { code: -32602, message: "arguments.amount must be a positive number" } }); return }
-            result = await prepareSend(userAddress, toolArgs.to, toolArgs.amount)
+            result = await prepareSend(userAddress, toolArgs.to, toolArgs.amount, toolArgs.token ?? "CELO")
             break
 
           case "swap_celo":
@@ -1242,7 +1257,7 @@ app.get("/catalog", (_, res) => {
       free("get_engagement_rewards", "Get Engagement Rewards", "Show CeloBank's GoodDollar EngagementRewards: total G$ distributed and users onboarded", { address: "string?" }),
       free("trade_ideas",          "Trade Ideas",           "Analyze portfolio and generate personalized DeFi trade recommendations",                     { address: "string?" }),
       // write tools — 0.001 cUSD each ─────────────────────────────────────────
-      paid("send_celo",    "Send CELO",          "Send CELO to an address",                                                                             { to: "string (0x address, required)", amount: "string (CELO, required)" }),
+      paid("send_celo",    "Send Token",         "Send CELO or any registered ERC20 token (cUSD, cEUR, USDC, ...) to an address",                       { to: "string (0x address, required)", amount: "string (required)", token: "string? (default: CELO)" }),
       paid("swap_celo",    "Swap CELO",          "Swap CELO for a stablecoin (cUSD, cEUR, cREAL, USDC, USDT) via Mento V2",                            { amount: "string (required)", tokenOut: "string (required)" }),
       paid("swap_tokens",  "Swap Tokens",        "Universal swap: any token pair on Celo via Mento V2 or Uniswap V3 (26+ tokens supported)",           { amount: "string (required)", tokenIn: "string? (default: CELO)", tokenOut: "string (required)" }),
       paid("save_cusd",    "Save (Aave Supply)", "Supply cUSD or USDC to Aave V3 to earn yield (~3–5% APY)",                                           { amount: "string (required)", asset: "string? ('cUSD' | 'USDC', default: cUSD)" }),
@@ -1260,7 +1275,7 @@ app.get("/.well-known/agent-card.json", (_, res) => {
   res.json({
     protocolVersion:    "0.3.0",
     name:               "CeloBank Agent",
-    description:        "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 21 callable tools. x402 payment enforced on write tools (0.001 cUSD each).",
+    description:        "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 24 callable tools. x402 payment enforced on write tools (0.001 cUSD each).",
     version:            "2.0.0",
     url:                "https://celobank-agent-production.up.railway.app",
     provider: {
@@ -1287,8 +1302,8 @@ app.get("/.well-known/agent-card.json", (_, res) => {
         paymentTokenAddr: CUSD_ADDRESS,
         chainId:          42220,
         writeToolFee:     "0.001 cUSD",
-        freeTools:        14,
-        paidTools:        7,
+        freeTools:        15,
+        paidTools:        9,
         facilitator:      X402_FACILITATOR,
       },
     },

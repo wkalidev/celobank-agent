@@ -153,8 +153,12 @@ function detectDeFiAction(msg: string): { action: string; params: Record<string,
   if (swapMatch) return { action: "swap", params: { amount: swapMatch[1], tokenIn: swapMatch[2].toUpperCase(), tokenOut: swapMatch[3].toUpperCase() } }
   const saveMatch = m.match(/(?:save|épargner|déposer|deposit|supply)\s+([\d.]+)(?:\s+(\w+))?/i)
   if (saveMatch) return { action: "supply_aave", params: { amount: saveMatch[1], asset: (saveMatch[2] || "cUSD").toUpperCase() } }
-  const sendMatch = m.match(/(?:send|envoie|envoyer|transfer)\s+([\d.]+)\s+celo\s+(?:to|à|a)\s+(0x[a-f0-9]{40})/i)
-  if (sendMatch) return { action: "send", params: { amount: sendMatch[1], to: sendMatch[2] } }
+  // Token is now optional and generic — previously this only matched the literal
+  // word "celo", so "send 5 cUSD to 0x..." (the app's own advertised example
+  // phrasing) fell through to the LLM path, which had no ERC20 send tool at all
+  // and could silently send native CELO instead of the requested token.
+  const sendMatch = m.match(/(?:send|envoie|envoyer|transfer)\s+([\d.]+)\s+(\w+)\s+(?:to|à|a)\s+(0x[a-f0-9]{40})/i)
+  if (sendMatch) return { action: "send", params: { amount: sendMatch[1], token: sendMatch[2].toUpperCase(), to: sendMatch[3] } }
   // Unstaking is a 3-step process (Manager.withdraw → Account.withdraw → finishPendingWithdrawal).
   // These two phrases must be checked BEFORE the generic unstakeMatch below, since they contain
   // "unstake" as a substring and take no numeric amount (they act on whatever is already pending).
@@ -645,11 +649,12 @@ export default function App() {
     if (!address || !walletClient) return
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
     try {
-      const sig = await (walletClient as any).signMessage({ message: "CeloBank Agent: Initiate Self Agent ID Registration", account: address })
+      const timestamp = Date.now()
+      const sig = await (walletClient as any).signMessage({ message: `CeloBank Agent: Initiate Self Agent ID Registration\nTimestamp: ${timestamp}`, account: address })
       const res = await fetch(`${API_URL}/api/self-agent-register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerAddress: address, signature: sig }),
+        body: JSON.stringify({ ownerAddress: address, signature: sig, timestamp }),
       })
       const data = await res.json()
       if (data.deepLink) setSelfRegSession({ deepLink: data.deepLink, humanInstructions: data.humanInstructions ?? [] })

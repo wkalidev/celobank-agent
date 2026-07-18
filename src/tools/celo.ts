@@ -136,9 +136,9 @@ export const getMultiPriceTool = tool(
 // transaction to the frontend, which the connected user's own wallet signs.
 // NEVER sign or broadcast here — the agent wallet must stay read-only.
 export const sendCeloTool = tool(
-  async ({ userAddress, to, amount }) => {
+  async ({ userAddress, to, amount, token }) => {
     try {
-      const result = await prepareSend(userAddress, to, amount)
+      const result = await prepareSend(userAddress, to, amount, token ?? "CELO")
       return UNSIGNED_TX_MARKER + JSON.stringify(result)
     } catch (e) {
       return `Erreur préparation envoi : ${e instanceof Error ? e.message : String(e)}`
@@ -146,15 +146,37 @@ export const sendCeloTool = tool(
   },
   {
     name: "send_celo",
-    description: "Prepare an unsigned transaction to send CELO to an address. The connected user's wallet signs it — this tool never moves funds itself.",
+    description: "Prepare an unsigned transaction to send CELO or any registered token (cUSD, cEUR, USDC, ...) to an address. The connected user's wallet signs it — this tool never moves funds itself.",
     schema: z.object({
       userAddress: z.string().describe("The CONNECTED USER's wallet address 0x... (signer) — required"),
       to: z.string().describe("Adresse destinataire 0x..."),
-      amount: z.string().describe("Montant en CELO, ex: 0.5"),
+      amount: z.string().describe("Montant à envoyer, ex: 0.5"),
+      token: z.string().optional().describe("Symbole du token à envoyer (défaut: CELO). cUSD, cEUR, USDC, etc. sont envoyés via un transfert ERC20."),
+    }),
+  }
+)
+
+// ─── Tool 4 : Solde CELO natif uniquement ─────────────────────────────────────
+// Distinct from get_portfolio (which returns CELO + all ERC20 tokens) — this is
+// the lightweight single-value lookup its name/description promise.
+export const getBalanceTool = tool(
+  async ({ address }) => {
+    try {
+      const addr = (address || account.address) as `0x${string}`
+      const nativeBalance = await publicClient.getBalance({ address: addr })
+      return `${addr.slice(0, 6)}...${addr.slice(-4)}: ${parseFloat(formatEther(nativeBalance)).toFixed(4)} CELO`
+    } catch (e) {
+      return `Erreur lecture solde : ${e}`
+    }
+  },
+  {
+    name: "get_balance",
+    description: "Get CELO native balance of an address (single value — use get_portfolio for all tokens)",
+    schema: z.object({
+      address: z.string().optional().describe("Adresse wallet 0x... (optionnel)"),
     }),
   }
 )
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
-export const getBalanceTool   = getPortfolioTool
 export const getCeloPriceTool = getMultiPriceTool

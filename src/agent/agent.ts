@@ -197,13 +197,14 @@ const anthropicTools: Anthropic.Tool[] = [
   },
   {
     name: "send_celo",
-    description: "Prepare an unsigned transaction to send CELO to an address. The connected user signs it — this never moves funds directly.",
+    description: "Prepare an unsigned transaction to send CELO or any registered token (cUSD, cEUR, USDC, etc.) to an address. The connected user signs it — this never moves funds directly.",
     input_schema: {
       type: "object",
       properties: {
         userAddress: { type: "string", description: "The CONNECTED USER's wallet address (signer) — always required" },
         to: { type: "string" },
         amount: { type: "string" },
+        token: { type: "string", description: "Token symbol to send (default: CELO). Any other registered symbol is sent as an ERC20 transfer." },
       },
       required: ["userAddress", "to", "amount"],
     },

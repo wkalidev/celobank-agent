@@ -28,13 +28,29 @@ const BOT_FID               = Number(process.env.NEYNAR_BOT_FID ?? "0")
 const WEBHOOK_SECRET        = process.env.NEYNAR_WEBHOOK_SECRET ?? ""
 const NEYNAR_BASE           = "https://api.neynar.com/v2/farcaster"
 
-function verifyNeynarSignature(rawBody: Buffer, signature: string): boolean {
-  if (!WEBHOOK_SECRET || !signature) return true
+if (!WEBHOOK_SECRET) {
+  console.error(
+    "⚠️  NEYNAR_WEBHOOK_SECRET is not set — POST /webhook/farcaster will reject " +
+    "ALL requests until it is configured. (Previously this fell back to accepting " +
+    "every request unverified — fixed to fail closed instead of fail open.)"
+  )
+}
+
+// Fails closed: an unset secret or a missing/malformed signature is rejected,
+// never silently accepted. Buffer lengths are checked before timingSafeEqual —
+// that function throws (not returns false) on a length mismatch, so an attacker
+// sending a wrong-length header used to crash this request path.
+function verifyNeynarSignature(rawBody: Buffer, signature: string | undefined): boolean {
+  if (!WEBHOOK_SECRET) return false
+  if (!signature) return false
   const expected = crypto
     .createHmac("sha512", WEBHOOK_SECRET)
     .update(rawBody)
     .digest("hex")
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+  const sigBuf = Buffer.from(signature, "hex")
+  const expBuf = Buffer.from(expected, "hex")
+  if (sigBuf.length !== expBuf.length) return false
+  return crypto.timingSafeEqual(sigBuf, expBuf)
 }
 
 async function replyToCast(text: string, parentHash: string, parentFid: number) {

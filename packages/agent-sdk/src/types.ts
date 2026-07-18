@@ -36,6 +36,7 @@ export interface SendResult {
   success: boolean
   to: `0x${string}`
   amount: string
+  token: string
   txHash: `0x${string}`
   explorerUrl: string
 }
@@ -61,6 +62,7 @@ export interface AaveSupplyResult {
 export interface SendParams {
   to: `0x${string}`
   amount: string          // ex: "0.5"
+  token?: string          // default: "CELO" (native). Any other registered symbol (cUSD, cEUR, USDC, ...) is sent via ERC20 transfer().
 }
 
 export interface SwapParams {
