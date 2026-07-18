@@ -676,7 +676,14 @@ export default function App() {
     try {
       for (let i = 0; i < prepared.transactions.length; i++) {
         const tx = prepared.transactions[i]
-        const hash = await wc.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+        // Same nonce race as doCheckIn/doClaimReward, but here it hits any multi-tx flow
+        // (swap approve+swap, unstake's 3 steps, ...): letting the wallet auto-derive the
+        // nonce for the 2nd+ transaction can return a stale value even right after
+        // waitForTransactionReceipt on tx i-1, because some wallets (MiniPay included)
+        // cache/optimistically track nonces client-side instead of re-querying "pending"
+        // state. Fetching a fresh pending nonce immediately before every send closes that gap.
+        const freshNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
+        const hash = await wc.sendTransaction({ to: tx.to, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, chainId: tx.chainId, account: address, nonce: freshNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
         lastHash = hash
         if (i < prepared.transactions.length - 1) await publicClient.waitForTransactionReceipt({ hash })
       }
@@ -684,6 +691,7 @@ export default function App() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes("User rejected") || msg.includes("user rejected")) return "❌ Transaction cancelled."
+      if (msg.includes("nonce too low") || msg.includes("nonce is lower")) return "⚠️ Transaction conflict (nonce) — please try again."
       return `❌ Transaction failed: ${msg}`
     }
   }, [address, publicClient])  // walletClient intentionally excluded — read via ref to get latest value
