@@ -69,9 +69,9 @@ function tagTransactions(transactions: UnsignedTx[]): UnsignedTx[] {
 /**
  * Single choke point for on-chain attribution tagging. Call this once, on
  * every successful PrepareResult, right before it's returned — from every
- * prepare*/launch* function in tools/prepare.ts and tools/launch.ts. Because
+ * prepare* / launch* function in tools/prepare.ts and tools/launch.ts. Because
  * every entry point (REST /api/v1/prepare, chat /api/v1/chat & /chat, and MCP
- * tools/call) ultimately calls those same prepare*/launch* functions, tagging
+ * tools/call) ultimately calls those same prepare* / launch* functions, tagging
  * happens exactly once per transaction with no per-route special-casing and
  * no way for a new entry point to accidentally skip it.
  *
