@@ -12,7 +12,6 @@ import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnsta
 import type { PrepareResult } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
-import { tagTransactions } from "./lib/attribution.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
@@ -627,10 +626,9 @@ app.post("/api/v1/prepare", prepareLimit, async (req, res) => {
         return res.status(400).json({ error: `Unknown action: ${action}. Supported: swap, supply_aave, send, stake, unstake, continue_unstake, claim_unstake, launch_token, get_tokens, get_trending` })
     }
 
-    // Tag every unsigned tx with the Celo Builders attribution code (no-op
-    // until ATTRIBUTION_TAG is set in .env — see src/lib/attribution.ts).
-    result.transactions = tagTransactions(result.transactions)
-
+    // Attribution tagging (Celo Builders) already happened inside
+    // prepare.ts/launch.ts — see src/lib/attribution.ts's applyAttribution(),
+    // the single choke point every prepare*/launch* function routes through.
     console.log(`✅ [prepare] ${action} — ${result.transactions.length} TX(s)`)
     res.json(result)
   } catch (e) {

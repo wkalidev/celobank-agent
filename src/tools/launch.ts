@@ -2,6 +2,7 @@ import "dotenv/config"
 import { encodeFunctionData, parseEther, formatEther } from "viem"
 import { publicClient, UNSIGNED_TX_MARKER } from "./prepare.js"
 import type { PrepareResult, UnsignedTx } from "./prepare.js"
+import { applyAttribution } from "../lib/attribution.js"
 
 const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e") as `0x${string}`
 
@@ -56,7 +57,7 @@ async function fetchTokenMeta(address: `0x${string}`) {
 }
 
 // ─── prepareLaunchToken ───────────────────────────────────────────────────────
-export async function prepareLaunchToken(
+async function prepareLaunchTokenImpl(
   userAddress: string,
   name: string,
   symbol: string,
@@ -87,6 +88,10 @@ export async function prepareLaunchToken(
     transactions: [launchTx],
     summary:      `Ready to launch ${name} (${symbol.toUpperCase()}) with ${Number(totalSupply).toLocaleString()} tokens. Sign 1 transaction.`,
   }
+}
+
+export async function prepareLaunchToken(...args: Parameters<typeof prepareLaunchTokenImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareLaunchTokenImpl(...args))
 }
 
 // ─── getTokens ────────────────────────────────────────────────────────────────

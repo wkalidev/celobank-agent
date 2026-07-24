@@ -4,6 +4,7 @@ import { useAccount, useConnect, useWalletClient, usePublicClient } from 'wagmi'
 import { sdk } from '@farcaster/miniapp-sdk'
 import { encodeFunctionData, parseEther, createWalletClient, custom } from "viem"
 import { celo } from "viem/chains"
+import { appendAttributionSuffix } from "./lib/attribution"
 
 // ─── DailyDrop Constants ──────────────────────────────────────────────────────
 const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
@@ -589,10 +590,13 @@ export default function App() {
     setChecking(true)
     try {
       const feeNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
-      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, value: CHECK_IN_FEE, account: address, chainId: 42220, gas: 200000n, nonce: feeNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const feeTx = await wc.sendTransaction({ to: FEE_RECEIVER, data: appendAttributionSuffix("0x"), value: CHECK_IN_FEE, account: address, chainId: 42220, gas: 200000n, nonce: feeNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: feeTx })
       const checkInNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" }), account: address, chainId: 42220, gas: 200000n, nonce: checkInNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      // DailyDrop is a third-party contract called directly here, entirely outside
+      // src/tools/prepare.ts's server-side tagging choke point — tag it client-side
+      // instead (src/ui/lib/attribution.ts) so this action isn't a gap.
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: appendAttributionSuffix(encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "checkIn" })), account: address, chainId: 42220, gas: 200000n, nonce: checkInNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       const newStreak = streak.current + 1
       const updated: StreakData = { ...streak, current: newStreak, best: Math.max(streak.best, newStreak), total: streak.total + 1, canCheckIn: false, canClaim: newStreak >= 7 }
@@ -621,7 +625,7 @@ export default function App() {
     setClaiming(true)
     try {
       const claimNonce = await (publicClient as any).getTransactionCount({ address, blockTag: "pending" })
-      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" }), account: address, chainId: 42220, gas: 200000n, nonce: claimNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
+      const tx = await wc.sendTransaction({ to: DAILYDROP_CELO, data: appendAttributionSuffix(encodeFunctionData({ abi: DAILYDROP_ABI, functionName: "claimReward" })), account: address, chainId: 42220, gas: 200000n, nonce: claimNonce, ...(isMiniPay && { feeCurrency: CUSD_ADDRESS }) } as any)
       await (publicClient as any).waitForTransactionReceipt({ hash: tx })
       setStreak(s => ({ ...s, current: 0, canClaim: false }))
       return `✅ REWARD CLAIMED!\n+10 DROP tokens 🎁\n\nTX: https://celoscan.io/tx/${tx}`

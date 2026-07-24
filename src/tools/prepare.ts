@@ -8,6 +8,7 @@ import {
   encodeFunctionData,
 } from "viem"
 import { defineChain } from "viem"
+import { applyAttribution } from "../lib/attribution.js"
 
 // ─── Chain ────────────────────────────────────────────────────────────────────
 const celo = defineChain({
@@ -354,7 +355,7 @@ async function quoteUniswapAmountOut(
 
 // ─── Prepare: Universal Swap ──────────────────────────────────────────────────
 // Routes CELO ↔ Mento stablecoin through Mento V2; all other pairs through Uniswap V3.
-export async function prepareSwap(
+async function prepareSwapImpl(
   userAddress: string,
   amount: string,
   tokenOut: string,
@@ -446,8 +447,12 @@ export async function prepareSwap(
   }
 }
 
+export async function prepareSwap(...args: Parameters<typeof prepareSwapImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareSwapImpl(...args))
+}
+
 // ─── Prepare: Supply Aave ─────────────────────────────────────────────────────
-export async function prepareSupplyAave(
+async function prepareSupplyAaveImpl(
   userAddress: string,
   amount: string,
   asset = "cUSD"
@@ -481,6 +486,10 @@ export async function prepareSupplyAave(
   }
 }
 
+export async function prepareSupplyAave(...args: Parameters<typeof prepareSupplyAaveImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareSupplyAaveImpl(...args))
+}
+
 // ─── Prepare: Send CELO or any ERC20 token ────────────────────────────────────
 // `token` defaults to "CELO" (native transfer) for backward compatibility. Any
 // other registered symbol (cUSD, cEUR, USDC, ...) is sent via ERC20 transfer().
@@ -500,7 +509,7 @@ const ERC20_TRANSFER_ABI = [
   },
 ] as const
 
-export async function prepareSend(
+async function prepareSendImpl(
   userAddress: string,
   to: string,
   amount: string,
@@ -542,8 +551,12 @@ export async function prepareSend(
   }
 }
 
+export async function prepareSend(...args: Parameters<typeof prepareSendImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareSendImpl(...args))
+}
+
 // ─── Prepare: Stake CELO ──────────────────────────────────────────────────────
-export async function prepareStake(
+async function prepareStakeImpl(
   userAddress: string,
   amount: string
 ): Promise<PrepareResult> {
@@ -562,6 +575,10 @@ export async function prepareStake(
   }
 }
 
+export async function prepareStake(...args: Parameters<typeof prepareStakeImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareStakeImpl(...args))
+}
+
 // ─── Prepare: Unstake stCELO ──────────────────────────────────────────────────
 const STAKED_CELO_WITHDRAW_ABI = [
   {
@@ -573,7 +590,7 @@ const STAKED_CELO_WITHDRAW_ABI = [
   },
 ] as const
 
-export async function prepareUnstake(
+async function prepareUnstakeImpl(
   userAddress: string,
   amount: string
 ): Promise<PrepareResult> {
@@ -600,6 +617,10 @@ export async function prepareUnstake(
                   `This does NOT release your CELO yet — it only burns your stCELO and schedules the withdrawal. ` +
                   `After this confirms, run "continue unstake" to start the ~3-day unbonding countdown, then "claim unstake" once it's elapsed to actually receive your CELO.`,
   }
+}
+
+export async function prepareUnstake(...args: Parameters<typeof prepareUnstakeImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareUnstakeImpl(...args))
 }
 
 // ─── Prepare: Complete Unstake (step 2 of 3) ──────────────────────────────────
@@ -691,7 +712,7 @@ async function findLesserAndGreater(
   return { lesser, greater }
 }
 
-export async function prepareCompleteUnstake(userAddress: string): Promise<PrepareResult> {
+async function prepareCompleteUnstakeImpl(userAddress: string): Promise<PrepareResult> {
   const beneficiary = userAddress as `0x${string}`
 
   const groups = await publicClient.readContract({
@@ -762,8 +783,12 @@ export async function prepareCompleteUnstake(userAddress: string): Promise<Prepa
   }
 }
 
+export async function prepareCompleteUnstake(...args: Parameters<typeof prepareCompleteUnstakeImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareCompleteUnstakeImpl(...args))
+}
+
 // ─── Prepare: Claim Unstake (step 3 of 3) ─────────────────────────────────────
-export async function prepareClaimUnstake(userAddress: string): Promise<PrepareResult> {
+async function prepareClaimUnstakeImpl(userAddress: string): Promise<PrepareResult> {
   const beneficiary = userAddress as `0x${string}`
   const now = BigInt(Math.floor(Date.now() / 1000))
 
@@ -831,4 +856,8 @@ export async function prepareClaimUnstake(userAddress: string): Promise<PrepareR
     summary:      `Step 3 of 3: sign ${transactions.length} transaction(s) to receive your unlocked CELO.` +
                   (notReadyCount > 0 ? ` (${notReadyCount} other withdrawal(s) still unlocking.)` : ""),
   }
+}
+
+export async function prepareClaimUnstake(...args: Parameters<typeof prepareClaimUnstakeImpl>): Promise<PrepareResult> {
+  return applyAttribution(await prepareClaimUnstakeImpl(...args))
 }
