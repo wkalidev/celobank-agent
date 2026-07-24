@@ -121,17 +121,20 @@ const token     = await sdk.launchToken({ name: "MyToken", symbol: "MTK", totalS
 
 ## 🔗 Smart Contracts
 
-| Contract | Address | Network |
-|----------|---------|---------|
-| **TokenFactory** | [`0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e`](https://celoscan.io/address/0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e) | Celo Mainnet |
-| ERC-8004 Identity | [`0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1`](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1) | Celo Mainnet |
-| Mento V2 Broker | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` | Celo Mainnet |
-| Uniswap V3 Router | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` | Celo Mainnet |
-| Aave V3 Pool | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` | Celo Mainnet |
-| stCELO Manager | `0x0239b96D10a434a56CC9E09383077A0490cF9398` | Celo Mainnet |
-| **GoodDollar EngagementRewards** | [`0x25db74CF4E7BA120526fd87e159CF656d94bAE43`](https://celoscan.io/address/0x25db74CF4E7BA120526fd87e159CF656d94bAE43) | Celo Mainnet |
-| GoodDollar IdentityV4 | [`0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`](https://celoscan.io/address/0xC361A6E67822a0EDc17D899227dd9FC50BD62F42) | Celo Mainnet |
-| G$ Token | [`0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A) | Celo Mainnet |
+| Contract | Address | Network | Celoscan verified |
+|----------|---------|---------|--------------------|
+| **TokenFactory** | [`0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e`](https://celoscan.io/address/0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e#code) | Celo Mainnet | ✅ Verified — Exact Match |
+| ERC-8004 Identity | [`0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1`](https://celoscan.io/address/0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1#code) | Celo Mainnet | ✅ Verified — Exact Match |
+| Mento V2 Broker | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` | Celo Mainnet | |
+| Uniswap V3 Router | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` | Celo Mainnet | |
+| Aave V3 Pool | `0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402` | Celo Mainnet | |
+| stCELO Manager | `0x0239b96D10a434a56CC9E09383077A0490cF9398` | Celo Mainnet | |
+| **GoodDollar EngagementRewards** | [`0x25db74CF4E7BA120526fd87e159CF656d94bAE43`](https://celoscan.io/address/0x25db74CF4E7BA120526fd87e159CF656d94bAE43) | Celo Mainnet | |
+| GoodDollar IdentityV4 | [`0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`](https://celoscan.io/address/0xC361A6E67822a0EDc17D899227dd9FC50BD62F42) | Celo Mainnet | |
+| G$ Token | [`0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3D2a9C7A) | Celo Mainnet | |
+
+`TokenFactory` (`v0.8.28+commit.7893614a`) and `ERC-8004 Identity` (`v0.8.25+commit.b61c2a91`)
+are our own contracts, both confirmed as **Source Code Verified — Exact Match** on Celoscan.
 
 ---
 
@@ -391,6 +394,23 @@ User (any language, any device)
 | Support URL in footer | ✅ `https://github.com/wkalidev/celobank-agent/issues` |
 | Graceful error handling | ✅ All wallet and API errors caught and surfaced as chat messages |
 | Deeplink parsing (`?to=&amount=&token=`) | ✅ URL params pre-fill the input on load |
+
+---
+
+## 🏷️ On-Chain Attribution
+
+Every transaction CeloBank Agent prepares gets a [Celo Builders (ERC-8021)](https://docs.celo.org/build-on-celo/attribution-tags)
+attribution suffix appended to its calldata via a single choke point
+(`applyAttribution` in `src/lib/attribution.ts`), called once for every successful
+`PrepareResult` right before it's returned. Because every entry point — REST
+`/api/v1/prepare`, chat `/api/v1/chat` & `/chat`, and MCP `tools/call` — ultimately
+routes through the same `prepare*` / `launch*` functions, tagging covers every write
+path with no per-route special-casing and no way for a new entry point to skip it.
+
+A Divvi referral-tag integration was evaluated here in July 2026 and has since been
+**removed**: `@divvi/referral-sdk` was deprecated on npm, the `divvi-xyz` GitHub org
+was archived, and `app.divvi.xyz` no longer resolves. Only the Celo Builders tag
+above remains.
 
 ---
 
