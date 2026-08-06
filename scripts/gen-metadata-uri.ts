@@ -7,7 +7,7 @@
  */
 import { writeFileSync, readFileSync } from "fs"
 
-// ── MCP tools (21) — must match server.ts MCP_TOOLS ──────────────────────────
+// ── MCP tools (24) — must match server.ts MCP_TOOLS ──────────────────────────
 const MCP_TOOLS = [
   "get_balance",
   "get_portfolio",
@@ -20,6 +20,8 @@ const MCP_TOOLS = [
   "get_aave_position",
   "stake_celo",
   "unstake_celo",
+  "continue_unstake",
+  "claim_unstake",
   "get_staking_position",
   "get_yield_options",
   "trade_ideas",
@@ -28,6 +30,7 @@ const MCP_TOOLS = [
   "get_dailydrop_status",
   "launch_token",
   "get_tokens",
+  "get_trending_tokens",
   "check_gooddollar",
   "get_engagement_rewards",
 ]
@@ -95,11 +98,17 @@ const metadata = {
   description:
     "Non-custodial AI DeFi agent on Celo Mainnet. Universal swap (26 tokens via " +
     "Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), " +
-    "GoodDollar G$ integration, DailyDrop streak rewards. 21 onchain tools. " +
+    "GoodDollar G$ integration, DailyDrop streak rewards. 24 onchain tools. " +
     "ERC-8004 compliant. x402 supported.",
   updatedAt:        1781568000,  // 2026-06-16 UTC
   x402Support:      true,
-  registrations:    [],
+  // Canonical ERC-8004 Identity Registry on Celo Mainnet (vanity address) —
+  // distinct from the project's own CeloBankAgent.sol contract at
+  // 0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1 (see WHITEPAPER.md §11).
+  // 8004scan and Aigora both resolve agent identity against this registry.
+  registrations: [
+    { agentRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", agentId: "9225" },
+  ],
   supportedTrust:   ["reputation"],
 }
 
@@ -125,7 +134,7 @@ const decoded = Buffer.from(readBack.slice(PREFIX.length), "base64").toString("u
 const parsed  = JSON.parse(decoded) as typeof metadata
 
 const endpointOk     = parsed.services[0].endpoint.endsWith("/mcp")
-const toolsOk        = parsed.services[0].mcpTools.length === 21
+const toolsOk        = parsed.services[0].mcpTools.length === 24
 const typeOk         = parsed.type === "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
 const capabilitiesOk = Array.isArray(parsed.services[0].capabilities) && parsed.services[0].capabilities.includes("tools")
 const versionOk      = parsed.services[0].version === "2024-11-05"
@@ -134,10 +143,11 @@ const trustOk        = Array.isArray(parsed.supportedTrust)
 const updatedAtOk    = parsed.services && parsed.updatedAt === 1781568000
 const a2aOk          = parsed.services[1]?.name === "A2A" && parsed.services[1]?.endpoint.includes("agent-card.json")
 const oasfOk         = parsed.services[2]?.name === "OASF" && Array.isArray(parsed.services[2]?.domains) && parsed.services[2].domains.includes("technology/blockchain/defi")
+const registryOk     = parsed.registrations?.[0]?.agentRegistry === "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" && parsed.registrations?.[0]?.agentId === "9225"
 
 console.log(`type field correct                  : ${typeOk         ? "PASS" : "FAIL"}`)
 console.log(`services[0].endpoint ends with /mcp : ${endpointOk     ? "PASS" : "FAIL"} (${parsed.services[0].endpoint})`)
-console.log(`services[0].mcpTools.length === 21  : ${toolsOk        ? "PASS" : "FAIL"} (got ${parsed.services[0].mcpTools.length})`)
+console.log(`services[0].mcpTools.length === 24  : ${toolsOk        ? "PASS" : "FAIL"} (got ${parsed.services[0].mcpTools.length})`)
 console.log(`services[0].capabilities = ["tools"]: ${capabilitiesOk ? "PASS" : "FAIL"}`)
 console.log(`services[0].version = "2024-11-05"  : ${versionOk      ? "PASS" : "FAIL"}`)
 console.log(`x402Support = true                  : ${x402Ok         ? "PASS" : "FAIL"}`)
@@ -145,8 +155,9 @@ console.log(`supportedTrust is array             : ${trustOk        ? "PASS" : "
 console.log(`updatedAt = 1781568000              : ${updatedAtOk    ? "PASS" : "FAIL"}`)
 console.log(`services[1] = A2A agent-card        : ${a2aOk          ? "PASS" : "FAIL"}`)
 console.log(`services[2] = OASF with domains     : ${oasfOk         ? "PASS" : "FAIL"}`)
+console.log(`registrations[0].agentRegistry set   : ${registryOk     ? "PASS" : "FAIL"}`)
 
-if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk || !a2aOk || !oasfOk) {
+if (!typeOk || !endpointOk || !toolsOk || !capabilitiesOk || !versionOk || !x402Ok || !trustOk || !updatedAtOk || !a2aOk || !oasfOk || !registryOk) {
   console.error("Roundtrip FAILED")
   process.exit(1)
 }

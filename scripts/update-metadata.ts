@@ -15,7 +15,10 @@ import { readFileSync } from "fs"
 // cUSD on Celo mainnet — paid as feeCurrency via CIP-64 so CELO balance isn't needed
 const CUSD = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as `0x${string}`
 
-const CONTRACT = "0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1" as `0x${string}`
+// Canonical ERC-8004 Identity Registry on Celo Mainnet (vanity address) — NOT
+// the project's own CeloBankAgent.sol contract (0x4ebef67f7a20485ccc9e66ee58fcc99f23e93de1).
+// 8004scan and Aigora resolve agent identity against this registry (agent #9225).
+const CONTRACT = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as `0x${string}`
 const artifact = JSON.parse(readFileSync("artifacts/contracts/CeloBankAgent.sol/CeloBankAgent.json", "utf-8"))
 
 // ─── Updated metadata ─────────────────────────────────────────────────────────
