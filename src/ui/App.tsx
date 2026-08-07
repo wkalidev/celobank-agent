@@ -580,7 +580,12 @@ export default function App() {
 
   const doCheckIn = useCallback(async (): Promise<string> => {
     if (checkInLockRef.current) return "⏳ Check-in already in progress — please wait."
-    const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
+    // Give wagmi 500ms to fully initialize walletClient after address detection —
+    // same race/fix as sendMessage's defiAction path (see :822-825, :854-856).
+    if (address && !walletClientRef.current) {
+      await new Promise<void>(resolve => setTimeout(resolve, 500))
+    }
+    const wc = (walletClientRef.current ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
     if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canCheckIn) {
       const next = streak.nextCheckIn > 0 ? new Date(streak.nextCheckIn * 1000).toLocaleTimeString() : "tomorrow"
@@ -618,7 +623,12 @@ export default function App() {
 
   const doClaimReward = useCallback(async (): Promise<string> => {
     if (claimLockRef.current) return "⏳ Claim already in progress — please wait."
-    const wc = (walletClient ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
+    // Give wagmi 500ms to fully initialize walletClient after address detection —
+    // same race/fix as sendMessage's defiAction path (see :822-825, :854-856).
+    if (address && !walletClientRef.current) {
+      await new Promise<void>(resolve => setTimeout(resolve, 500))
+    }
+    const wc = (walletClientRef.current ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
     if (!address || !wc || !publicClient) return "❌ Wallet not connected."
     if (!streak.canClaim) return `⏳ Need ${7 - streak.current} more days to claim.`
     claimLockRef.current = true
@@ -650,11 +660,17 @@ export default function App() {
   }, [])
 
   const handleStartVerification = useCallback(async () => {
-    if (!address || !walletClient) return
+    // Give wagmi 500ms to fully initialize walletClient after address detection —
+    // same race/fix as sendMessage's defiAction path (see :822-825, :854-856).
+    if (address && !walletClientRef.current) {
+      await new Promise<void>(resolve => setTimeout(resolve, 500))
+    }
+    const wc = walletClientRef.current
+    if (!address || !wc) return
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
     try {
       const timestamp = Date.now()
-      const sig = await (walletClient as any).signMessage({ message: `CeloBank Agent: Initiate Self Agent ID Registration\nTimestamp: ${timestamp}`, account: address })
+      const sig = await (wc as any).signMessage({ message: `CeloBank Agent: Initiate Self Agent ID Registration\nTimestamp: ${timestamp}`, account: address })
       const res = await fetch(`${API_URL}/api/self-agent-register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

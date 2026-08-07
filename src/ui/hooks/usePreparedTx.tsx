@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { useAccount, useWalletClient, usePublicClient } from "wagmi"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +33,12 @@ export function usePreparedTx() {
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
 
+  // Ref so a delayed retry (below) reads the latest walletClient without
+  // needing it in executePrepared's useCallback deps — same pattern as
+  // App.tsx's walletClientRef.
+  const walletClientRef = useRef(walletClient)
+  useEffect(() => { walletClientRef.current = walletClient }, [walletClient])
+
   const [txStatus, setTxStatus] = useState<TxStatus>({
     step:    0,
     total:   0,
@@ -46,7 +52,13 @@ export function usePreparedTx() {
    * Signs and submits each TX in sequence using the user's wallet.
    */
   const executePrepared = useCallback(async (prepared: PrepareResult): Promise<string> => {
-    if (!address || !walletClient || !publicClient) {
+    // Give wagmi 500ms to fully initialize walletClient after address detection —
+    // same race/fix as App.tsx's sendMessage defiAction path.
+    if (address && !walletClientRef.current) {
+      await new Promise<void>(resolve => setTimeout(resolve, 500))
+    }
+    const wc = walletClientRef.current
+    if (!address || !wc || !publicClient) {
       return "❌ Wallet not connected. Please connect your wallet first."
     }
 
@@ -70,7 +82,7 @@ export function usePreparedTx() {
         })
 
         // Send transaction via user's wallet
-        const hash = await walletClient.sendTransaction({
+        const hash = await wc.sendTransaction({
           to:      tx.to,
           data:    tx.data as `0x${string}`,
           value:   tx.value ? BigInt(tx.value) : undefined,
