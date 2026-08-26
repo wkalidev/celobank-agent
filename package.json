@@ -15,7 +15,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev": "concurrently \"tsx src/server.ts\" \"vite\"",
-    "self-agent-fix": "tsx scripts/self-agent-fix.ts"
+    "self-agent-fix": "tsx scripts/self-agent-fix.ts",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -42,6 +43,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "langchain": "^1.4.0",
+    "pg": "^8.16.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "thirdweb": "^5.120.0",
@@ -57,12 +59,14 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.19.19",
+    "@types/pg": "^8.11.10",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.1.2",
     "hardhat": "^3.4.5",
     "typescript": "~5.8.0",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^3.2.4"
   }
 }

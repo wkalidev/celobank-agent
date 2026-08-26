@@ -707,6 +707,22 @@ export default function App() {
         lastHash = hash
         if (i < prepared.transactions.length - 1) await publicClient.waitForTransactionReceipt({ hash })
       }
+
+      // Fire-and-forget: tell the backend this confirmed action counts toward the
+      // GoodDollar engagement-reward eligibility gate (lib/activity-store.ts). The
+      // server independently verifies the receipt, so it's safe to just notify here —
+      // failure must never block the user-facing success message below.
+      if (lastHash) {
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
+        publicClient.waitForTransactionReceipt({ hash: lastHash as `0x${string}` })
+          .then(() => fetch(`${API_URL}/activity/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address, action: prepared.action, txHash: lastHash }),
+          }))
+          .catch(() => {})
+      }
+
       return `✅ ${prepared.summary}\n> TX: https://celoscan.io/tx/${lastHash}\n> Signed by: ${address.slice(0, 6)}...${address.slice(-4)}`
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -854,6 +870,45 @@ export default function App() {
       } else {
         const res = await fetch(`${API_URL}/api/v1/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: enrichedMsg, userAddress: address || null }) })
         const data = await res.json()
+
+        // claim_engagement_reward needs an EIP-712 signature (not a transaction) before
+        // the agent's own wallet can submit the on-chain GoodDollar claim — see
+        // tools/engagement.ts and POST /api/v1/engagement/submit-claim.
+        if (data.unsignedTypedData) {
+          if (!address) {
+            setMessages(prev => [...prev, { role: "agent", content: `${data.response}\n\n❌ Wallet not connected. Please connect your wallet first.`, timestamp: new Date() }])
+            return
+          }
+          setMessages(prev => [...prev, { role: "agent", content: `> ${data.response}\n> Waiting for signature...`, timestamp: new Date() }])
+
+          if (address && !walletClientRef.current) {
+            await new Promise<void>(resolve => setTimeout(resolve, 500))
+          }
+          const wc = walletClientRef.current as any
+          if (!wc) {
+            setMessages(prev => [...prev, { role: "agent", content: "❌ Wallet not connected. Please connect your wallet first.", timestamp: new Date() }])
+            return
+          }
+          try {
+            const signature = await wc.signTypedData({ account: address, domain: data.domain, types: data.types, primaryType: "Claim", message: data.message })
+            const submitRes = await fetch(`${API_URL}/api/v1/engagement/submit-claim`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userAddress: address, message: data.message, signature }),
+            })
+            const submitData = await submitRes.json()
+            if (submitData.success) {
+              setMessages(prev => [...prev, { role: "agent", content: `✅ Engagement reward claimed!\n> TX: https://celoscan.io/tx/${submitData.txHash}`, timestamp: new Date() }])
+            } else {
+              setMessages(prev => [...prev, { role: "agent", content: `❌ ${submitData.error ?? "Claim failed"}`, timestamp: new Date() }])
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            const cancelled = msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied")
+            setMessages(prev => [...prev, { role: "agent", content: cancelled ? "❌ Signature cancelled." : `❌ ${msg}`, timestamp: new Date() }])
+          }
+          return
+        }
 
         // The AI decided to prepare a write action (send/swap/save/stake/launch) even
         // though the local regex above didn't catch it — e.g. a phrasing in one of the

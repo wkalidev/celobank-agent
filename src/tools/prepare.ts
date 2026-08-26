@@ -26,6 +26,12 @@ export const publicClient = createPublicClient({ chain: celo, transport: http() 
 // letting the model paraphrase it or (worse) executing it with the agent's own key.
 export const UNSIGNED_TX_MARKER = "__CELOBANK_UNSIGNED_TX__"
 
+// Same purpose as UNSIGNED_TX_MARKER but for an EIP-712 signature request rather than
+// a transaction — used by tools/engagement.ts's claim_engagement_reward, which needs
+// the user's typed-data signature (not a tx) before the agent's own wallet can submit
+// the on-chain claim.
+export const UNSIGNED_TYPED_DATA_MARKER = "__CELOBANK_UNSIGNED_TYPED_DATA__"
+
 // ─── Contract Addresses ───────────────────────────────────────────────────────
 const BROKER              = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
 const BI_POOL_MANAGER     = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
