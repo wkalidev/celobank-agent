@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "dev": "concurrently \"tsx src/server.ts\" \"vite\"",
     "self-agent-fix": "tsx scripts/self-agent-fix.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

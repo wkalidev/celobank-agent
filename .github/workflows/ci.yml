@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Module-level code in src/tools/*.ts and src/server.ts calls
+# privateKeyToAccount(process.env.PRIVATE_KEY!) at import time, so even the
+# typecheck job's `tsc --noEmit` (pure static analysis, no code execution)
+# doesn't need it — but the test job does, since importing the modules under
+# test pulls that code path in. This is a well-known, publicly documented
+# test-only key (Anvil/Hardhat default account #0) with no funds on any
+# network — never used for anything but satisfying this import.
+env:
+  PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck

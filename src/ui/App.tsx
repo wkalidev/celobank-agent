@@ -4,7 +4,7 @@ import { useAccount, useConnect, useWalletClient, usePublicClient } from 'wagmi'
 import { sdk } from '@farcaster/miniapp-sdk'
 import { encodeFunctionData, parseEther, createWalletClient, custom } from "viem"
 import { celo } from "viem/chains"
-import { appendAttributionSuffix } from "./lib/attribution"
+import { appendAttributionSuffix } from "./lib/attribution.js"
 
 // Mirrors lib/activity-store.ts's isQualifyingAction (the actions that count toward
 // the GoodDollar engagement-reward gate) — see executePrepared's /activity/confirm call.
