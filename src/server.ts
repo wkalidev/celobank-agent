@@ -8,10 +8,16 @@ import { existsSync } from "fs"
 import { runAgent, toolRegistry } from "./agent/agent.js"
 import { privateKeyToAccount } from "viem/accounts"
 import { verifyMessage } from "viem"
-import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnstake, prepareCompleteUnstake, prepareClaimUnstake, UNSIGNED_TX_MARKER } from "./tools/prepare.js"
+import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnstake, prepareCompleteUnstake, prepareClaimUnstake, publicClient, UNSIGNED_TX_MARKER, UNSIGNED_TYPED_DATA_MARKER } from "./tools/prepare.js"
 import type { PrepareResult } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
+import { runMigrations, pool } from "./lib/db.js"
+import type { PoolClient } from "pg"
+import { recordConfirmedAction, isQualifyingAction, matchesActionTarget, getActivity, isEligible } from "./lib/activity-store.js"
+import { txCarriesOurAttribution } from "./lib/attribution.js"
+import { submitEngagementClaim } from "./tools/engagement.js"
+import type { ClaimTypedData } from "./tools/engagement.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
@@ -88,6 +94,15 @@ const externalReadLimit = rateLimit({
   message: { error: "Too many requests. Please wait a moment and try again." },
 })
 
+// Activity-confirm and engagement-claim-submit — same budget as prepare
+const activityLimit = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+})
+
 // ─── Input validation helpers ─────────────────────────────────────────────────
 function isValidAddress(addr: unknown): addr is string {
   return typeof addr === "string" && /^0x[0-9a-fA-F]{40}$/.test(addr)
@@ -129,6 +144,43 @@ function extractUnsignedTx(agentResponse: string): PrepareResult | null {
   } catch (e) {
     console.error("[chat] Failed to parse unsigned tx payload:", e instanceof Error ? e.message : e)
     return null
+  }
+}
+
+// Same idea as extractUnsignedTx, but for claim_engagement_reward (tools/engagement.ts),
+// which needs an EIP-712 signature rather than a transaction before the agent's own
+// wallet can submit the on-chain claim.
+interface UnsignedTypedDataResult extends ClaimTypedData {
+  success:     boolean
+  action:      string
+  userAddress: string
+  summary:     string
+  error?:      string
+}
+
+function extractUnsignedTypedData(agentResponse: string): UnsignedTypedDataResult | null {
+  if (!agentResponse.startsWith(UNSIGNED_TYPED_DATA_MARKER)) return null
+  try {
+    return JSON.parse(agentResponse.slice(UNSIGNED_TYPED_DATA_MARKER.length)) as UnsignedTypedDataResult
+  } catch (e) {
+    console.error("[chat] Failed to parse unsigned typed-data payload:", e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+// Shared by /api/v1/chat and its /chat backward-compat alias — the only difference
+// between the two response shapes is whether `language` is included, so build it in
+// one place rather than letting the two duplicate object literals drift apart.
+function buildClaimResponse(claim: UnsignedTypedDataResult, lang?: string) {
+  return {
+    response:          claim.summary,
+    ...(lang ? { language: lang } : {}),
+    unsignedTypedData: true,
+    action:            claim.action,
+    userAddress:       claim.userAddress,
+    domain:            claim.domain,
+    types:             claim.types,
+    message:           claim.message,
   }
 }
 
@@ -437,7 +489,7 @@ This is the recommended approach — the agent never holds user funds.
       get: {
         tags: ["System"],
         summary: "x402 machine-readable service catalog",
-        description: "Lists all 24 tools with pricing, payment schema, and x402 facilitator details.",
+        description: "Lists all 25 tools with pricing, payment schema, and x402 facilitator details.",
         responses: { 200: { description: "x402 catalog" } },
       },
     },
@@ -504,6 +556,14 @@ app.post("/api/v1/chat", chatLimit, async (req, res) => {
       })
     }
 
+    const claimRequest = extractUnsignedTypedData(response)
+    if (claimRequest) {
+      if (!claimRequest.success) {
+        return res.json({ response: `❌ ${claimRequest.error ?? "Preparation failed"}`, language: lang })
+      }
+      return res.json(buildClaimResponse(claimRequest, lang))
+    }
+
     res.json({ response, language: lang })
   } catch (e) {
     res.status(500).json({ error: safeError(e) })
@@ -534,6 +594,12 @@ app.post("/chat", chatLimit, async (req, res) => {
         userAddress:  prepared.userAddress,
         transactions: prepared.transactions,
       })
+    }
+
+    const claimRequest = extractUnsignedTypedData(response)
+    if (claimRequest) {
+      if (!claimRequest.success) return res.json({ response: `❌ ${claimRequest.error ?? "Preparation failed"}` })
+      return res.json(buildClaimResponse(claimRequest))
     }
 
     res.json({ response })
@@ -783,6 +849,139 @@ app.post("/api/self-agent-register", prepareLimit, async (req, res) => {
   }
 })
 
+// ─── POST /activity/confirm ────────────────────────────────────────────────────
+// Called by the frontend once a prepared transaction (send/swap/save/stake/unstake
+// step/launch) confirms on-chain — records genuine CeloBank usage toward the
+// GoodDollar engagement-reward eligibility gate (lib/activity-store.ts). Verifies
+// the receipt itself server-side rather than trusting the client's say-so, since
+// this state ultimately gates a real (if rare) fund transfer.
+// A tx older than this can never count toward the engagement-reward gate — see the
+// comment at its use below.
+const MAX_CONFIRMABLE_ACTION_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+app.post("/activity/confirm", activityLimit, async (req, res) => {
+  const { address, action, txHash } = req.body
+
+  if (!isValidAddress(address)) {
+    return res.status(400).json({ error: "address must be a valid Ethereum address" })
+  }
+  if (!isQualifyingAction(action)) {
+    return res.status(400).json({ error: "action is not a recognized qualifying action" })
+  }
+  if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ error: "txHash must be a valid transaction hash" })
+  }
+
+  try {
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` })
+    if (receipt.status !== "success") {
+      return res.status(400).json({ error: "Transaction did not succeed on-chain" })
+    }
+    if (receipt.from.toLowerCase() !== (address as string).toLowerCase()) {
+      return res.status(400).json({ error: "Transaction sender does not match address" })
+    }
+    if (!matchesActionTarget(action, receipt.to)) {
+      return res.status(400).json({ error: "Transaction target does not match the claimed action" })
+    }
+
+    // matchesActionTarget only checks the *contract* a tx hit — but Broker, Aave's
+    // pool, and stCELO's manager/account are shared infrastructure used by dozens
+    // of other Celo dApps (MiniPay, Ubeswap, app.aave.com, ...), so a genuine but
+    // CeloBank-unrelated swap/supply/stake from any of those would otherwise pass.
+    // Every tx this app prepares carries the configured attribution suffix
+    // (lib/attribution.ts) — require it here too, closing that gap. No-op when no
+    // attribution code is configured (see txCarriesOurAttribution's own comment).
+    const tx = await publicClient.getTransaction({ hash: txHash as `0x${string}` })
+    if (!txCarriesOurAttribution(tx.input)) {
+      return res.status(400).json({ error: "Transaction was not prepared by this app" })
+    }
+
+    // Reject stale txs: without this, a historical tx from months ago (to a
+    // shared or CeloBank contract alike) would set firstActionAt that far in the
+    // past, trivially satisfying the "2+ days since first action" returning-user
+    // check the instant it's registered instead of requiring genuine elapsed time.
+    const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
+    const ageMs = Date.now() - Number(block.timestamp) * 1000
+    if (ageMs > MAX_CONFIRMABLE_ACTION_AGE_MS) {
+      return res.status(400).json({ error: "Transaction is too old to count toward the engagement-reward gate" })
+    }
+
+    await recordConfirmedAction(address, action, txHash)
+    res.json({ recorded: true })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
+  }
+})
+
+// ─── POST /api/v1/engagement/submit-claim ──────────────────────────────────────
+// Second half of claim_engagement_reward (tools/engagement.ts): the frontend signed
+// the EIP-712 Claim message returned by the tool; this submits appClaim on-chain
+// using the agent's own wallet (its own gas, never the user's funds). Signature
+// tampering is enforced on-chain by the contract's own check — but CeloBank's own
+// product gate (genuine usage + returning-user signal, lib/activity-store.ts) lives
+// entirely in this repo's DB and the on-chain contract knows nothing about it, so it
+// must be re-checked here too: this endpoint is reachable directly (a caller can sign
+// the message themselves and skip claim_engagement_reward's .invoke() entirely), and
+// that path used to bypass the gate completely.
+app.post("/api/v1/engagement/submit-claim", prepareLimit, async (req, res) => {
+  const { userAddress, message, signature } = req.body
+
+  if (!isValidAddress(userAddress)) {
+    return res.status(400).json({ error: "userAddress must be a valid Ethereum address" })
+  }
+  if (!message || typeof message !== "object" ||
+      !isValidAddress(message.app) || !isValidAddress(message.inviter) ||
+      typeof message.validUntilBlock !== "string" || typeof message.description !== "string") {
+    return res.status(400).json({ error: "message must be a valid Claim payload" })
+  }
+  if (typeof signature !== "string" || !/^0x[0-9a-fA-F]+$/.test(signature)) {
+    return res.status(400).json({ error: "signature must be a hex string" })
+  }
+
+  const addr = (userAddress as string).toLowerCase()
+  // Serialize concurrent submit-claim requests for the same address: without this,
+  // two requests can both pass the DB gate and both simulateContract successfully
+  // before either tx confirms, so both submit an on-chain appClaim — the loser
+  // reverts on-chain ("Claim cooldown not reached"), burning the agent's own gas.
+  // Held across the whole gate-check + submission so a request that was waiting
+  // re-checks eligibility fresh once it gets the lock, instead of racing to
+  // simulateContract on stale state. Skipped entirely when no DB is configured —
+  // getActivity()/isEligible() already 403 unconditionally in that case (see
+  // lib/activity-store.ts's isDbConfigured), so there's nothing to serialize.
+  //
+  // Everything, including pool.connect() itself, stays inside the try: Express 5
+  // auto-forwards a rejected async handler to its default error page (no custom
+  // error middleware is registered in this file), which would bypass safeError()
+  // and leak raw error text — the same class of leak fixed elsewhere in this
+  // endpoint — if a DB-connect failure were left outside the try/catch.
+  let lockClient: PoolClient | null = null
+  try {
+    if (process.env.DATABASE_URL) {
+      lockClient = await pool.connect()
+      await lockClient.query("SELECT pg_advisory_lock(hashtext($1))", [addr])
+    }
+
+    const activity = await getActivity(userAddress)
+    const gate = isEligible(activity)
+    if (!gate.eligible) {
+      return res.status(403).json({ error: gate.reason })
+    }
+
+    const result = await submitEngagementClaim(userAddress as `0x${string}`, message, signature as `0x${string}`)
+    if (!result.success) {
+      return res.status(400).json({ error: result.error ?? "Claim failed" })
+    }
+    res.json({ success: true, txHash: result.txHash })
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) })
+  } finally {
+    if (lockClient) {
+      await lockClient.query("SELECT pg_advisory_unlock(hashtext($1))", [addr]).catch(() => {})
+      lockClient.release()
+    }
+  }
+})
+
 // ─── GET /health ──────────────────────────────────────────────────────────────
 app.get("/health", (_, res) => res.json({
   status:  "ok",
@@ -793,7 +992,7 @@ app.get("/health", (_, res) => res.json({
   // repo's package.json. Published 2026-07-18 — see CHANGELOG.md.
   sdk:     "@celobank/agent-sdk@1.2.0",
   mode:    "non-custodial (v2)",
-  tools:   24,
+  tools:   25,
   docs:    "/docs",
   uptime:  Math.floor(process.uptime()),
 }))
@@ -824,13 +1023,14 @@ const MCP_TOOLS = [
   { name: "get_trending_tokens",  description: "Get the 5 most recently launched tokens on CeloBank Token Factory" },
   { name: "check_gooddollar",        description: "Check G$ balance and GoodDollar human verification status for an address" },
   { name: "get_engagement_rewards",  description: "Show CeloBank's GoodDollar engagement reward stats (G$ distributed, users onboarded)" },
+  { name: "claim_engagement_reward", description: "Claim the CeloBank x GoodDollar engagement reward, gated on genuine CeloBank usage plus a returning-user signal" },
 ]
 
 // Shared MCP discovery payload — used by GET /mcp and content-negotiated GET /
 const MCP_INFO = {
   name:        "CeloBank Agent",
   version:     "2.0.0",
-  description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 24 tools. x402 micropayments (0.001 cUSD/write). ERC-8004 compliant.",
+  description: "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, Token Launcher (ERC-20 deploy), GoodDollar G$ integration, DailyDrop streak rewards. 25 tools. x402 micropayments (0.001 cUSD/write). ERC-8004 compliant.",
   tools:       MCP_TOOLS.map(t => t.name),
   status:      "healthy",
   endpoint:    "https://celobank-agent-production.up.railway.app/mcp",
@@ -854,6 +1054,7 @@ const TOOL_SCHEMAS: Record<string, object> = {
   get_trending_tokens:  { type: "object", properties: {} },
   check_gooddollar:     { type: "object", required: ["address"], properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
   get_engagement_rewards: { type: "object", properties: { address: { type: "string", description: "App address (optional, defaults to CeloBank)" } } },
+  claim_engagement_reward: { type: "object", properties: { address: { type: "string", description: "Wallet address to check/claim for (optional, defaults to connected wallet)" } } },
   // Write tools — require X-PAYMENT: 0.001 cUSD via x402
   send_celo: {
     type: "object",
@@ -1277,7 +1478,7 @@ app.get("/.well-known/agent-card.json", (_, res) => {
   res.json({
     protocolVersion:    "0.3.0",
     name:               "CeloBank Agent",
-    description:        "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 24 callable tools. x402 payment enforced on write tools (0.001 cUSD each).",
+    description:        "Non-custodial DeFi agent on Celo Mainnet. Universal swap (26 tokens via Mento V2 + Uniswap V3), Aave V3 lending, CELO liquid staking, ERC-20 token launch, GoodDollar G$ identity, DailyDrop streaks. 25 callable tools. x402 payment enforced on write tools (0.001 cUSD each).",
     version:            "2.0.0",
     url:                "https://celobank-agent-production.up.railway.app",
     provider: {
@@ -1304,7 +1505,7 @@ app.get("/.well-known/agent-card.json", (_, res) => {
         paymentTokenAddr: CUSD_ADDRESS,
         chainId:          42220,
         writeToolFee:     "0.001 cUSD",
-        freeTools:        15,
+        freeTools:        16,
         paidTools:        9,
         facilitator:      X402_FACILITATOR,
       },
@@ -1394,6 +1595,36 @@ if (existsSync(uiDist)) {
         req.path.startsWith("/.well-known")) return next()
     res.sendFile(join(uiDist, "index.html"))
   })
+}
+
+// Non-fatal: the other 24 tools work fine with no DATABASE_URL configured yet —
+// only the engagement-reward gate needs it.
+runMigrations().catch(e => console.error("[db] Migration failed:", e instanceof Error ? e.message : e))
+
+// txCarriesOurAttribution() (lib/attribution.ts) — the check that stops a genuine-
+// but-unrelated tx to a shared contract (Broker, Aave pool, stCELO manager, ...)
+// from counting toward the engagement-reward gate — deliberately fails OPEN when
+// no attribution code is configured, since CeloBank's own prepared txs wouldn't
+// carry a suffix either in that case. That's the right call for dev/test, but in
+// prod it would silently reopen the exact shared-infra bypass the whole
+// engagement-reward gate exists to close, with nothing in the logs to say so.
+// Refuse to boot rather than let that happen silently.
+if (process.env.ENGAGEMENT_REWARDS_ENV === "prod" && !process.env.ATTRIBUTION_TAG && !process.env.OWN_ATTRIBUTION_CODE) {
+  console.error(`
+╔══════════════════════════════════════════════════════════════════════════╗
+║  FATAL: ENGAGEMENT_REWARDS_ENV=prod but no attribution code is configured ║
+║                                                                            ║
+║  Neither ATTRIBUTION_TAG nor OWN_ATTRIBUTION_CODE is set. Without one,    ║
+║  /activity/confirm cannot tell a genuine CeloBank-prepared tx apart from  ║
+║  any other successful tx to the same shared contract (Broker, Aave pool, ║
+║  stCELO manager/account) signed through a completely different dApp —    ║
+║  the engagement-reward gate's anti-farming check silently does nothing.  ║
+║                                                                            ║
+║  Set ATTRIBUTION_TAG (or OWN_ATTRIBUTION_CODE) in .env before starting    ║
+║  in prod. See src/lib/attribution.ts and .env.example.                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+`)
+  process.exit(1)
 }
 
 app.listen(3000, () => {

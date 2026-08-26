@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { toDataSuffix } from "@celo/attribution-tags"
+import { toDataSuffix, fromDataSuffix } from "@celo/attribution-tags"
 import { concat, type Hex } from "viem"
 import type { UnsignedTx, PrepareResult } from "../tools/prepare.js"
 
@@ -86,4 +86,31 @@ export function applyAttribution(result: PrepareResult): PrepareResult {
   if (transactions === result.transactions) return result
 
   return { ...result, transactions }
+}
+
+// ─── Verification (the other direction) ─────────────────────────────────────
+// /activity/confirm (server.ts) needs to tell "a tx CeloBank prepared" apart from
+// "any successful tx to the same shared contract (Broker, Aave pool, ...) signed
+// through some other dApp" — matchesActionTarget (lib/activity-store.ts) alone
+// can't, since those contracts are used by dozens of other Celo frontends. The
+// attribution suffix every prepared tx carries (tagTransactions above) doubles as
+// that fingerprint.
+//
+// When no attribution code is configured, there is nothing of ours to check a
+// suffix against — CeloBank's own prepared txs wouldn't carry one either in that
+// case, so requiring it would reject genuine users instead of just blocking
+// spoofers. This deliberately fails open in that one case; it's the same
+// trade-off tagTransactions already makes (no-op without a configured code).
+export function txCarriesOurAttribution(input: string | null | undefined): boolean {
+  const codes = resolveCodes()
+  if (!codes) return true // attribution not configured — nothing to verify against
+  if (!input) return false
+  let decoded: ReturnType<typeof fromDataSuffix>
+  try {
+    decoded = fromDataSuffix(input as Hex)
+  } catch {
+    return false
+  }
+  if (!decoded) return false
+  return decoded.codes.some(c => codes.includes(c))
 }
