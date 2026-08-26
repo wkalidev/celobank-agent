@@ -19,7 +19,7 @@ vi.mock("./prepare.js", async (importOriginal) => {
   }
 })
 
-import { getActivity } from "../lib/activity-store.js"
+import { getActivity, markRewardClaimed } from "../lib/activity-store.js"
 import { publicClient } from "./prepare.js"
 import {
   claimEngagementRewardTool,
@@ -121,6 +121,20 @@ describe("submitEngagementClaim", () => {
     const result = await submitEngagementClaim(USER, message, "0xsig" as `0x${string}`, clients)
     expect(result.success).toBe(false)
     expect(result.error).toContain("Claim cooldown not reached")
+  })
+
+  it("does not mark the reward claimed when the on-chain tx reverts (waitForTransactionReceipt resolves, doesn't throw)", async () => {
+    vi.mocked(markRewardClaimed).mockReset()
+    const clients = fakeClients({
+      simulateContract: vi.fn().mockResolvedValue({ request: { fake: "request" } }),
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "reverted" }),
+    })
+
+    const result = await submitEngagementClaim(USER, message, "0xsig" as `0x${string}`, clients)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("reverted")
+    expect(markRewardClaimed).not.toHaveBeenCalled()
   })
 })
 

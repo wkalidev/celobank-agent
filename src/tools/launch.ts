@@ -4,7 +4,7 @@ import { publicClient, UNSIGNED_TX_MARKER } from "./prepare.js"
 import type { PrepareResult, UnsignedTx } from "./prepare.js"
 import { applyAttribution } from "../lib/attribution.js"
 
-const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e") as `0x${string}`
+export const FACTORY_ADDRESS = (process.env.TOKEN_FACTORY_ADDRESS ?? "0x597f121c014b99a15c7c4e08928f0fe1ec3adc2e") as `0x${string}`
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 const FACTORY_WRITE_ABI = [

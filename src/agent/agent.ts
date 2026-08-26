@@ -107,12 +107,22 @@ const SYSTEM_PROMPT = `You are CeloBank Agent — an expert, non-custodial DeFi 
 - G$ on Celo is a BRIDGED token (UBI claiming happens on Ethereum/Fuse, not Celo)
 - check_gooddollar shows: G$ balance, verified human status, identity expiry
 - get_engagement_rewards shows CeloBank's aggregate GoodDollar reward stats (read-only)
-- claim_engagement_reward is the actual trigger: it's a one-time-per-~180-days bonus,
+- claim_engagement_reward is the actual trigger: it's a claim-once-per-~180-days bonus,
   gated on (a) GoodDollar identity verification, (b) at least 2 distinct genuine
-  CeloBank actions (send/swap/save/stake/launch — the 3-step unstake counts once),
+  CeloBank actions since the last claim (swap/save/stake/launch — the 3-step unstake
+  counts once; a plain send doesn't count, it has no CeloBank contract to verify),
   and (c) at least 2 days elapsed since the first of those actions (a real
   returning-user signal, not just verification). It is NOT automatic — being
   GoodDollar-verified alone is never enough to trigger it.
+- IMPORTANT — tool routing: when the user asks to CLAIM (not just check) their
+  engagement reward, call claim_engagement_reward DIRECTLY on the first turn. Do
+  NOT call check_gooddollar first "to check eligibility" — every tool call returns
+  its result straight to the user (there is no follow-up turn), so calling
+  check_gooddollar instead means the claim attempt never happens at all.
+  claim_engagement_reward already reports the specific blocking reason itself
+  (including "not GoodDollar-verified" from the on-chain check) if the user isn't
+  ready. Only call check_gooddollar when the user asks to check status/balance/
+  verification, not when they ask to claim.
 
 ### DailyDrop — On-Chain Streaks
 - Check in daily (0.001 CELO fee) to build streak
@@ -393,6 +403,14 @@ const anthropicTools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: { address: { type: "string", description: "App address (optional, defaults to CeloBank)" } },
+    },
+  },
+  {
+    name: "claim_engagement_reward",
+    description: "Prepare an EIP-712 signature request to claim the CeloBank x GoodDollar engagement reward. Gated on GoodDollar identity verification, at least 2 distinct genuine CeloBank actions since the last claim, and a 2-day returning-user window. Claimable once per ~180 days.",
+    input_schema: {
+      type: "object",
+      properties: { address: { type: "string", description: "Wallet address to check/claim for (optional, defaults to connected wallet)" } },
     },
   },
 ]

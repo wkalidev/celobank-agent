@@ -33,21 +33,23 @@ export const UNSIGNED_TX_MARKER = "__CELOBANK_UNSIGNED_TX__"
 export const UNSIGNED_TYPED_DATA_MARKER = "__CELOBANK_UNSIGNED_TYPED_DATA__"
 
 // ─── Contract Addresses ───────────────────────────────────────────────────────
-const BROKER              = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
+// Exported (not just local consts) so lib/activity-store.ts can whitelist the
+// on-chain target each qualifying action is expected to hit.
+export const BROKER       = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as `0x${string}`
 const BI_POOL_MANAGER     = "0x22d9db95E6Ae61c104A7B6F6C78D7993B94ec901" as `0x${string}`
-const AAVE_POOL           = "0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
-const STAKED_CELO_MANAGER = "0x0239b96D10a434a56CC9E09383077A0490cF9398" as `0x${string}`
+export const AAVE_POOL           = "0x3E59A31363E2ad014dcbc521c4a0d5757d9f3402" as `0x${string}`
+export const STAKED_CELO_MANAGER = "0x0239b96D10a434a56CC9E09383077A0490cF9398" as `0x${string}`
 const STAKED_CELO_TOKEN   = "0xC668583dcbDc9ae6FA3CE46462758188adfdfC24" as `0x${string}`
 // StakedCelo Account.sol — holds the protocol's locked CELO and is the contract that actually
 // interacts with Celo's core Election/LockedGold contracts to vote, unvote, and unlock CELO.
 // See https://docs.stcelo.xyz/contracts/account
-const STAKED_CELO_ACCOUNT = "0x4aAD04D41FD7fd495503731C5a2579e19054C432" as `0x${string}`
+export const STAKED_CELO_ACCOUNT = "0x4aAD04D41FD7fd495503731C5a2579e19054C432" as `0x${string}`
 // Celo core protocol contracts (unchanged by the March 2025 L2 migration — see
 // https://docs.celo.org/cel2/whats-changed/l1-l2 — Election/LockedGold kept the same addresses
 // and semantics; only the consensus layer under them changed). Source: docs.celo.org/contracts/core-contracts
 const CELO_ELECTION    = "0x8D6677192144292870907E3Fa8A5527fE55A7ff6" as `0x${string}`
 const CELO_LOCKED_GOLD = "0x6cC083Aed9e3ebe302A6336dBC7c921C9f03349E" as `0x${string}`
-const UNISWAP_V3_ROUTER   = "0x5615CDAb10dc425a742d643d949a7F474C01abc4" as `0x${string}`
+export const UNISWAP_V3_ROUTER   = "0x5615CDAb10dc425a742d643d949a7F474C01abc4" as `0x${string}`
 const UNISWAP_V3_QUOTER   = "0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8" as `0x${string}`
 const UNISWAP_V3_FEE      = 3000 // 0.3%
 const DEFAULT_SLIPPAGE_BPS = 100n // 1% default slippage tolerance for swap quotes

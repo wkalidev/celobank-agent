@@ -12,8 +12,10 @@ import { prepareSwap, prepareSupplyAave, prepareSend, prepareStake, prepareUnsta
 import type { PrepareResult } from "./tools/prepare.js"
 import { prepareLaunchToken, getTokens, getTrendingTokens } from "./tools/launch.js"
 import { getSelfAgentStatus, initiateRegistration } from "./lib/self-agent-id.js"
-import { runMigrations } from "./lib/db.js"
-import { recordConfirmedAction, isQualifyingAction } from "./lib/activity-store.js"
+import { runMigrations, pool } from "./lib/db.js"
+import type { PoolClient } from "pg"
+import { recordConfirmedAction, isQualifyingAction, matchesActionTarget, getActivity, isEligible } from "./lib/activity-store.js"
+import { txCarriesOurAttribution } from "./lib/attribution.js"
 import { submitEngagementClaim } from "./tools/engagement.js"
 import type { ClaimTypedData } from "./tools/engagement.js"
 
@@ -163,6 +165,22 @@ function extractUnsignedTypedData(agentResponse: string): UnsignedTypedDataResul
   } catch (e) {
     console.error("[chat] Failed to parse unsigned typed-data payload:", e instanceof Error ? e.message : e)
     return null
+  }
+}
+
+// Shared by /api/v1/chat and its /chat backward-compat alias — the only difference
+// between the two response shapes is whether `language` is included, so build it in
+// one place rather than letting the two duplicate object literals drift apart.
+function buildClaimResponse(claim: UnsignedTypedDataResult, lang?: string) {
+  return {
+    response:          claim.summary,
+    ...(lang ? { language: lang } : {}),
+    unsignedTypedData: true,
+    action:            claim.action,
+    userAddress:       claim.userAddress,
+    domain:            claim.domain,
+    types:             claim.types,
+    message:           claim.message,
   }
 }
 
@@ -543,16 +561,7 @@ app.post("/api/v1/chat", chatLimit, async (req, res) => {
       if (!claimRequest.success) {
         return res.json({ response: `❌ ${claimRequest.error ?? "Preparation failed"}`, language: lang })
       }
-      return res.json({
-        response:          claimRequest.summary,
-        language:          lang,
-        unsignedTypedData: true,
-        action:            claimRequest.action,
-        userAddress:       claimRequest.userAddress,
-        domain:            claimRequest.domain,
-        types:             claimRequest.types,
-        message:           claimRequest.message,
-      })
+      return res.json(buildClaimResponse(claimRequest, lang))
     }
 
     res.json({ response, language: lang })
@@ -590,15 +599,7 @@ app.post("/chat", chatLimit, async (req, res) => {
     const claimRequest = extractUnsignedTypedData(response)
     if (claimRequest) {
       if (!claimRequest.success) return res.json({ response: `❌ ${claimRequest.error ?? "Preparation failed"}` })
-      return res.json({
-        response:          claimRequest.summary,
-        unsignedTypedData: true,
-        action:            claimRequest.action,
-        userAddress:       claimRequest.userAddress,
-        domain:            claimRequest.domain,
-        types:             claimRequest.types,
-        message:           claimRequest.message,
-      })
+      return res.json(buildClaimResponse(claimRequest))
     }
 
     res.json({ response })
@@ -854,6 +855,10 @@ app.post("/api/self-agent-register", prepareLimit, async (req, res) => {
 // GoodDollar engagement-reward eligibility gate (lib/activity-store.ts). Verifies
 // the receipt itself server-side rather than trusting the client's say-so, since
 // this state ultimately gates a real (if rare) fund transfer.
+// A tx older than this can never count toward the engagement-reward gate — see the
+// comment at its use below.
+const MAX_CONFIRMABLE_ACTION_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
 app.post("/activity/confirm", activityLimit, async (req, res) => {
   const { address, action, txHash } = req.body
 
@@ -875,6 +880,31 @@ app.post("/activity/confirm", activityLimit, async (req, res) => {
     if (receipt.from.toLowerCase() !== (address as string).toLowerCase()) {
       return res.status(400).json({ error: "Transaction sender does not match address" })
     }
+    if (!matchesActionTarget(action, receipt.to)) {
+      return res.status(400).json({ error: "Transaction target does not match the claimed action" })
+    }
+
+    // matchesActionTarget only checks the *contract* a tx hit — but Broker, Aave's
+    // pool, and stCELO's manager/account are shared infrastructure used by dozens
+    // of other Celo dApps (MiniPay, Ubeswap, app.aave.com, ...), so a genuine but
+    // CeloBank-unrelated swap/supply/stake from any of those would otherwise pass.
+    // Every tx this app prepares carries the configured attribution suffix
+    // (lib/attribution.ts) — require it here too, closing that gap. No-op when no
+    // attribution code is configured (see txCarriesOurAttribution's own comment).
+    const tx = await publicClient.getTransaction({ hash: txHash as `0x${string}` })
+    if (!txCarriesOurAttribution(tx.input)) {
+      return res.status(400).json({ error: "Transaction was not prepared by this app" })
+    }
+
+    // Reject stale txs: without this, a historical tx from months ago (to a
+    // shared or CeloBank contract alike) would set firstActionAt that far in the
+    // past, trivially satisfying the "2+ days since first action" returning-user
+    // check the instant it's registered instead of requiring genuine elapsed time.
+    const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
+    const ageMs = Date.now() - Number(block.timestamp) * 1000
+    if (ageMs > MAX_CONFIRMABLE_ACTION_AGE_MS) {
+      return res.status(400).json({ error: "Transaction is too old to count toward the engagement-reward gate" })
+    }
 
     await recordConfirmedAction(address, action, txHash)
     res.json({ recorded: true })
@@ -886,9 +916,13 @@ app.post("/activity/confirm", activityLimit, async (req, res) => {
 // ─── POST /api/v1/engagement/submit-claim ──────────────────────────────────────
 // Second half of claim_engagement_reward (tools/engagement.ts): the frontend signed
 // the EIP-712 Claim message returned by the tool; this submits appClaim on-chain
-// using the agent's own wallet (its own gas, never the user's funds). Correctness
-// here is enforced on-chain — the contract's own signature check rejects a tampered
-// message, so the fields below don't need to be re-derived server-side.
+// using the agent's own wallet (its own gas, never the user's funds). Signature
+// tampering is enforced on-chain by the contract's own check — but CeloBank's own
+// product gate (genuine usage + returning-user signal, lib/activity-store.ts) lives
+// entirely in this repo's DB and the on-chain contract knows nothing about it, so it
+// must be re-checked here too: this endpoint is reachable directly (a caller can sign
+// the message themselves and skip claim_engagement_reward's .invoke() entirely), and
+// that path used to bypass the gate completely.
 app.post("/api/v1/engagement/submit-claim", prepareLimit, async (req, res) => {
   const { userAddress, message, signature } = req.body
 
@@ -904,7 +938,35 @@ app.post("/api/v1/engagement/submit-claim", prepareLimit, async (req, res) => {
     return res.status(400).json({ error: "signature must be a hex string" })
   }
 
+  const addr = (userAddress as string).toLowerCase()
+  // Serialize concurrent submit-claim requests for the same address: without this,
+  // two requests can both pass the DB gate and both simulateContract successfully
+  // before either tx confirms, so both submit an on-chain appClaim — the loser
+  // reverts on-chain ("Claim cooldown not reached"), burning the agent's own gas.
+  // Held across the whole gate-check + submission so a request that was waiting
+  // re-checks eligibility fresh once it gets the lock, instead of racing to
+  // simulateContract on stale state. Skipped entirely when no DB is configured —
+  // getActivity()/isEligible() already 403 unconditionally in that case (see
+  // lib/activity-store.ts's isDbConfigured), so there's nothing to serialize.
+  //
+  // Everything, including pool.connect() itself, stays inside the try: Express 5
+  // auto-forwards a rejected async handler to its default error page (no custom
+  // error middleware is registered in this file), which would bypass safeError()
+  // and leak raw error text — the same class of leak fixed elsewhere in this
+  // endpoint — if a DB-connect failure were left outside the try/catch.
+  let lockClient: PoolClient | null = null
   try {
+    if (process.env.DATABASE_URL) {
+      lockClient = await pool.connect()
+      await lockClient.query("SELECT pg_advisory_lock(hashtext($1))", [addr])
+    }
+
+    const activity = await getActivity(userAddress)
+    const gate = isEligible(activity)
+    if (!gate.eligible) {
+      return res.status(403).json({ error: gate.reason })
+    }
+
     const result = await submitEngagementClaim(userAddress as `0x${string}`, message, signature as `0x${string}`)
     if (!result.success) {
       return res.status(400).json({ error: result.error ?? "Claim failed" })
@@ -912,6 +974,11 @@ app.post("/api/v1/engagement/submit-claim", prepareLimit, async (req, res) => {
     res.json({ success: true, txHash: result.txHash })
   } catch (e) {
     res.status(500).json({ error: safeError(e) })
+  } finally {
+    if (lockClient) {
+      await lockClient.query("SELECT pg_advisory_unlock(hashtext($1))", [addr]).catch(() => {})
+      lockClient.release()
+    }
   }
 })
 
@@ -987,6 +1054,7 @@ const TOOL_SCHEMAS: Record<string, object> = {
   get_trending_tokens:  { type: "object", properties: {} },
   check_gooddollar:     { type: "object", required: ["address"], properties: { address: { type: "string", description: "Wallet address (0x...)" } } },
   get_engagement_rewards: { type: "object", properties: { address: { type: "string", description: "App address (optional, defaults to CeloBank)" } } },
+  claim_engagement_reward: { type: "object", properties: { address: { type: "string", description: "Wallet address to check/claim for (optional, defaults to connected wallet)" } } },
   // Write tools — require X-PAYMENT: 0.001 cUSD via x402
   send_celo: {
     type: "object",
@@ -1437,7 +1505,7 @@ app.get("/.well-known/agent-card.json", (_, res) => {
         paymentTokenAddr: CUSD_ADDRESS,
         chainId:          42220,
         writeToolFee:     "0.001 cUSD",
-        freeTools:        15,
+        freeTools:        16,
         paidTools:        9,
         facilitator:      X402_FACILITATOR,
       },
@@ -1532,6 +1600,32 @@ if (existsSync(uiDist)) {
 // Non-fatal: the other 24 tools work fine with no DATABASE_URL configured yet —
 // only the engagement-reward gate needs it.
 runMigrations().catch(e => console.error("[db] Migration failed:", e instanceof Error ? e.message : e))
+
+// txCarriesOurAttribution() (lib/attribution.ts) — the check that stops a genuine-
+// but-unrelated tx to a shared contract (Broker, Aave pool, stCELO manager, ...)
+// from counting toward the engagement-reward gate — deliberately fails OPEN when
+// no attribution code is configured, since CeloBank's own prepared txs wouldn't
+// carry a suffix either in that case. That's the right call for dev/test, but in
+// prod it would silently reopen the exact shared-infra bypass the whole
+// engagement-reward gate exists to close, with nothing in the logs to say so.
+// Refuse to boot rather than let that happen silently.
+if (process.env.ENGAGEMENT_REWARDS_ENV === "prod" && !process.env.ATTRIBUTION_TAG && !process.env.OWN_ATTRIBUTION_CODE) {
+  console.error(`
+╔══════════════════════════════════════════════════════════════════════════╗
+║  FATAL: ENGAGEMENT_REWARDS_ENV=prod but no attribution code is configured ║
+║                                                                            ║
+║  Neither ATTRIBUTION_TAG nor OWN_ATTRIBUTION_CODE is set. Without one,    ║
+║  /activity/confirm cannot tell a genuine CeloBank-prepared tx apart from  ║
+║  any other successful tx to the same shared contract (Broker, Aave pool, ║
+║  stCELO manager/account) signed through a completely different dApp —    ║
+║  the engagement-reward gate's anti-farming check silently does nothing.  ║
+║                                                                            ║
+║  Set ATTRIBUTION_TAG (or OWN_ATTRIBUTION_CODE) in .env before starting    ║
+║  in prod. See src/lib/attribution.ts and .env.example.                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+`)
+  process.exit(1)
+}
 
 app.listen(3000, () => {
   console.log("🚀 CeloBank Agent API v2.0.0")

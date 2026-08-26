@@ -92,9 +92,13 @@ const KNOWN_REVERT_REASONS = [
   "Invalid user address",
 ]
 
-function parseCanClaimRevertReason(e: unknown): string {
+function parseKnownRevertReason(e: unknown, fallback: string): string {
   const msg = e instanceof Error ? e.message : String(e)
-  return KNOWN_REVERT_REASONS.find(reason => msg.includes(reason)) ?? "Not eligible to claim right now."
+  return KNOWN_REVERT_REASONS.find(reason => msg.includes(reason)) ?? fallback
+}
+
+function parseCanClaimRevertReason(e: unknown): string {
+  return parseKnownRevertReason(e, "Not eligible to claim right now.")
 }
 
 export interface OnChainEligibility {
@@ -175,11 +179,33 @@ export async function submitEngagementClaim(
       account: clients.appAccount,
     })
     const hash = await clients.walletClient.writeContract(request)
-    await clients.publicClient.waitForTransactionReceipt({ hash })
-    await markRewardClaimed(userAddress, hash)
+    // waitForTransactionReceipt does NOT throw on revert — it resolves with
+    // status: "reverted". A reverted appClaim (e.g. lost a race for the app's
+    // per-period budget) must not consume the user's claim.
+    const receipt = await clients.publicClient.waitForTransactionReceipt({ hash })
+    if (receipt.status !== "success") {
+      return { success: false, error: `Transaction reverted (${hash})` }
+    }
+    try {
+      await markRewardClaimed(userAddress, hash)
+    } catch (dbErr) {
+      // The on-chain claim already succeeded and consumed the contract's own
+      // ~180-day cooldown — a DB blip here must not turn that into a reported
+      // failure (the user would retry, hit "Claim cooldown not reached" on-chain,
+      // and be stuck for the rest of the cooldown with no record of their tx).
+      // The row is recoverable later from appClaim event logs; the tx hash isn't
+      // if we drop it here.
+      console.error("[engagement] markRewardClaimed failed after successful on-chain claim — backfill from event logs, tx:", hash, dbErr instanceof Error ? dbErr.message : dbErr)
+    }
     return { success: true, txHash: hash }
   } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) }
+    // simulateContract/writeContract errors carry raw viem internals (RPC URLs,
+    // request bodies, dependency version strings) — never forward those to an
+    // unauthenticated caller. Log the full error server-side, surface only an
+    // allowlisted revert reason (or a fixed fallback) to the response, matching
+    // the same KNOWN_REVERT_REASONS pattern checkOnChainEligibility already uses.
+    console.error("[engagement] submitEngagementClaim failed:", e instanceof Error ? e.message : e)
+    return { success: false, error: parseKnownRevertReason(e, "Claim failed on-chain.") }
   }
 }
 
@@ -192,10 +218,16 @@ export const claimEngagementRewardTool = {
     const activity   = await getActivity(addr)
     const productGate = isEligible(activity)
     if (!productGate.eligible) {
+      // The "N/2 actions so far" line only makes sense when the blocker IS the
+      // action count/returning-user window — during the post-claim cooldown,
+      // actionCount is 0 by design (getActivity() only counts activity since the
+      // last claim) and printing "0/2" there reads as "you've never used CeloBank",
+      // which is wrong and sends users off to do 2 needless actions.
+      const isCooldown = productGate.reason?.startsWith("Engagement reward already claimed")
       return `🎁 Engagement reward not ready yet.
-> ${productGate.reason}
-> Genuine CeloBank actions so far: ${activity?.actionCount ?? 0}/2 (send, swap, save, stake, or launch a token — the 3-step unstake counts once as a full cycle)
-> Also make sure you're GoodDollar-verified: https://wallet.gooddollar.org`
+> ${productGate.reason}${isCooldown ? "" : `
+> Genuine CeloBank actions so far: ${activity?.actionCount ?? 0}/2 (swap, save, stake, or launch a token — the 3-step unstake counts once as a full cycle; a plain send doesn't count, since it has no CeloBank contract to verify against)
+> Also make sure you're GoodDollar-verified: https://wallet.gooddollar.org`}`
     }
 
     const chainGate = await checkOnChainEligibility(addr)

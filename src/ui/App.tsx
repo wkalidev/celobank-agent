@@ -6,6 +6,10 @@ import { encodeFunctionData, parseEther, createWalletClient, custom } from "viem
 import { celo } from "viem/chains"
 import { appendAttributionSuffix } from "./lib/attribution"
 
+// Mirrors lib/activity-store.ts's isQualifyingAction (the actions that count toward
+// the GoodDollar engagement-reward gate) — see executePrepared's /activity/confirm call.
+const QUALIFYING_ACTIONS = new Set(["swap", "supply_aave", "stake", "unstake", "complete_unstake", "claim_unstake", "launch_token"])
+
 // ─── DailyDrop Constants ──────────────────────────────────────────────────────
 const DAILYDROP_CELO = "0x63596cf6601ec2240A295ff2840C8d6653252AE6" as `0x${string}`
 const FEE_RECEIVER   = "0xDEAcDe6eC27Fd0cD972c1232C4f0d4171dda2357" as `0x${string}`
@@ -712,7 +716,12 @@ export default function App() {
       // GoodDollar engagement-reward eligibility gate (lib/activity-store.ts). The
       // server independently verifies the receipt, so it's safe to just notify here —
       // failure must never block the user-facing success message below.
-      if (lastHash) {
+      // QUALIFYING_ACTIONS mirrors lib/activity-store.ts's isQualifyingAction — kept
+      // as a small duplicated literal here (not imported) since that module pulls in
+      // the `pg` package, which has no business in the frontend bundle. "send" is
+      // deliberately absent (see the comment on ACTION_TARGET_CONTRACTS server-side);
+      // without this guard the server 400s harmlessly (swallowed below) on every send.
+      if (lastHash && QUALIFYING_ACTIONS.has(prepared.action)) {
         const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000"
         publicClient.waitForTransactionReceipt({ hash: lastHash as `0x${string}` })
           .then(() => fetch(`${API_URL}/activity/confirm`, {
@@ -884,7 +893,7 @@ export default function App() {
           if (address && !walletClientRef.current) {
             await new Promise<void>(resolve => setTimeout(resolve, 500))
           }
-          const wc = walletClientRef.current as any
+          const wc = (walletClientRef.current ?? (isMiniPay && address ? getMiniPayWalletClient(address as `0x${string}`) : null)) as any
           if (!wc) {
             setMessages(prev => [...prev, { role: "agent", content: "❌ Wallet not connected. Please connect your wallet first.", timestamp: new Date() }])
             return
